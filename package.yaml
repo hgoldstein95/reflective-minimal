@@ -62,4 +62,5 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - system-f-bin
+    - hspec
+    - reflective-minimal

@@ -9,7 +9,6 @@ module Reflective where
 import BidirectionalProfunctors (Profmonad)
 import Control.Lens (Getting, Prism', preview)
 import Control.Lens.Combinators (review)
-import Data.Default (Default (def))
 import Data.Monoid (First)
 import PartialProfunctors (PartialProfunctor, comap)
 
@@ -18,17 +17,6 @@ class Pick g where
     (Eq t, Eq a) =>
     [(t, g t a a)] ->
     g t a a
-
-blind ::
-  ( Applicative (g t a),
-    Pick g,
-    Eq a,
-    Eq t,
-    Default t
-  ) =>
-  [a] ->
-  g t a a
-blind = pick . map ((def,) . pure)
 
 class
   ( forall t. Profmonad (g t),
