@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Reflective where
@@ -14,7 +13,7 @@ import PartialProfunctors (PartialProfunctor, comap)
 
 class Pick g where
   pick ::
-    (Eq t, Eq a) =>
+    (Eq t) =>
     [(t, g t a a)] ->
     g t a a
 
@@ -52,5 +51,5 @@ infixl 4 <**>
 at :: (PartialProfunctor p) => p u' v -> Getting (First u') u u' -> p u v
 at x y = (comap . preview) y x
 
-exact :: (Reflective g, Eq a) => a -> g t a a
+exact :: forall t g a. (PartialProfunctor (g t), Applicative (g t a), Eq a) => a -> g t a a
 exact x = comap (\y -> if y == x then Just y else Nothing) (pure x)

@@ -43,7 +43,7 @@ instance Foldable FChoices where
   foldMap f (Mark a x) = mappend (f a) (foldMap f x)
   foldMap f (FanOut xs) = foldMap (foldMap f) xs
 
-newtype UnGenFChoices t b a = UnGenFChoices {run :: b -> Maybe (a, FChoices t)}
+newtype UnGenFChoices t b a = UnGenFChoices {run :: b -> [(a, FChoices t)]}
 
 instance Functor (UnGenFChoices t b) where
   fmap f x = UnGenFChoices $ fmap (first f) . run x
@@ -66,29 +66,24 @@ instance Profunctor (UnGenFChoices t) where
   dimap bwd fwd x = fwd <$> UnGenFChoices (run x . bwd)
 
 instance PartialProfunctor (UnGenFChoices t) where
-  internaliseMaybe x = UnGenFChoices (run x <=< id)
+  internaliseMaybe x = UnGenFChoices (run x <=< toList)
 
 instance Profmonad (UnGenFChoices t)
 
 instance Alternative (UnGenFChoices t b) where
-  empty = UnGenFChoices $ const Nothing
+  empty = UnGenFChoices $ const []
   ux <|> uy = UnGenFChoices (\b -> run ux b <|> run uy b)
 
 instance Pick UnGenFChoices where
   pick xs =
     UnGenFChoices
-      ( \b ->
-          let fan = do
-                (t, g) <- xs
-                (x, ts) <- toList (run g b)
-                return (x, Mark t ts)
-           in case fan of
-                [] -> Nothing
-                [p] -> Just p
-                ((x, _) : _) -> Just (x, FanOut (snd <$> fan))
+      ( \b -> do
+          (t, g) <- xs
+          (x, ts) <- run g b
+          return (x, Mark t ts)
       )
 
 instance Reflective UnGenFChoices
 
-unGenFChoices :: (forall g. Reflective g => g t a a) -> a -> Maybe (FChoices t)
+unGenFChoices :: (forall g. Reflective g => g t a a) -> a -> [FChoices t]
 unGenFChoices x a = snd <$> run x a
