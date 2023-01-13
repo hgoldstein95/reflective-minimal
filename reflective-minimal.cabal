@@ -27,6 +27,7 @@ library
   exposed-modules:
       BidirectionalProfunctors
       FR
+      Freer
       GenList
       HedgehogTree
       PartialProfunctors
@@ -44,8 +45,10 @@ library
     , base >=4.7 && <5
     , data-default
     , lens
+    , logict
     , mtl
     , profunctors
+    , template-haskell
   default-language: Haskell2010
 
 executable reflective-minimal-exe
@@ -60,9 +63,11 @@ executable reflective-minimal-exe
     , base >=4.7 && <5
     , data-default
     , lens
+    , logict
     , mtl
     , profunctors
     , reflective-minimal
+    , template-haskell
   default-language: Haskell2010
 
 test-suite reflective-minimal-test
@@ -79,7 +84,9 @@ test-suite reflective-minimal-test
     , data-default
     , hspec
     , lens
+    , logict
     , mtl
     , profunctors
     , reflective-minimal
+    , template-haskell
   default-language: Haskell2010

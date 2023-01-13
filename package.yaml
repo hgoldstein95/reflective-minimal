@@ -26,6 +26,8 @@ dependencies:
 - profunctors
 - data-default
 - mtl
+- logict
+- template-haskell
 
 ghc-options:
 - -Wall
