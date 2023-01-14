@@ -1,6 +1,7 @@
 {-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuantifiedConstraints #-}
@@ -13,16 +14,19 @@
 module Freer2 where
 
 import BidirectionalProfunctors (Profmonad)
+import Control.Exception (SomeException)
 import Control.Lens (Getting, makePrisms, preview, view, _1, _2, _3)
 import Control.Monad (ap, (>=>))
 import Control.Monad.Logic (Logic, MonadLogic ((>>-)), observeAll)
 import Data.Bifunctor (Bifunctor (second))
 import Data.Foldable (asum)
 import Data.List (nub)
+import Data.Maybe (catMaybes)
 import Data.Monoid (First)
 import Data.Profunctor (Profunctor (..))
 import Data.Ratio (denominator, numerator)
 import Data.Void (Void)
+import GHC.IO (catch, evaluate)
 import PartialProfunctors (PartialProfunctor (..))
 import Test.QuickCheck (Gen)
 import qualified Test.QuickCheck as QC
@@ -40,6 +44,8 @@ data Refl b a where
   Label :: String -> FR b a -> Refl b a
   Lmap :: (c -> d) -> FR d a -> Refl c a
   InternaliseMaybe :: FR b a -> Refl (Maybe b) a
+  Sized :: (Int -> FR b a) -> Refl b a
+  Resize :: Int -> FR b a -> Refl b a
 
 instance Functor (Freer2 f b) where
   fmap f (Return x) = Return (f x)
@@ -87,20 +93,33 @@ exact x = comap (\y -> if y == x then Just y else Nothing) (pure x)
 fwd :: FR c a -> FR Void a
 fwd = lmap (\case {})
 
-fix :: ((i -> FR b a) -> i -> FR b a) -> i -> FR b a
-fix f = f (fix f)
-
 label :: String -> FR b a -> FR b a
 label s x = Bind (Label s x) Return
+
+draw :: FR b a -> FR b a
+draw = label ""
+
+sized :: (Int -> FR b a) -> FR b a
+sized f = Bind (Sized f) Return
+
+resize :: Int -> FR b a -> FR b a
+resize n x = Bind (Resize n x) Return
+
+tryFocus :: Getting (First u') s u' -> FR u' v -> FR s v
+tryFocus = comap . preview
+
+focus :: Getting b s b -> FR b c -> FR s c
+focus = lmap . view
 
 gen :: FR b a -> Gen a
 gen = aux
   where
-    aux' :: Refl b a -> Gen a
     aux' (Coin w) = (< numerator w) <$> QC.choose (0, denominator w)
     aux' (Lmap _ x) = aux x
     aux' (InternaliseMaybe x) = aux x
     aux' (Label _ x) = aux x
+    aux' (Sized f) = QC.sized (aux . f)
+    aux' (Resize n x) = QC.resize n (aux x)
 
     aux :: FR b a -> Gen a
     aux (Return x) = pure x
@@ -108,14 +127,33 @@ gen = aux
       y <- aux' x
       aux (f y)
 
+byExample :: FR a a -> [a] -> Gen a
+byExample g v = aux g v >>= QC.elements
+  where
+    aux' (Coin _) _ = pure [True, False]
+    aux' (Lmap f x) b = aux x (f <$> b)
+    aux' (InternaliseMaybe x) b = case catMaybes b of
+      [] -> pure []
+      bs -> aux x bs
+    aux' (Label _ x) b = aux x b
+    aux' (Sized f) b = aux (f 0) b
+    aux' (Resize _ x) b = aux x b
+
+    aux :: FR b a -> [b] -> Gen [a]
+    aux (Return x) _ = pure (pure x)
+    aux (Bind mx f) b = do
+      x <- aux' mx b
+      concat <$> mapM (\a -> aux (f a) b) x
+
 enum :: FR b a -> [a]
 enum = observeAll . aux
   where
-    aux' :: Refl b a -> Logic a
     aux' (Coin w) = (< numerator w) <$> asum (map pure [0 .. denominator w])
     aux' (Lmap _ x) = aux x
     aux' (InternaliseMaybe x) = aux x
     aux' (Label _ x) = aux x
+    aux' (Sized f) = aux (f 0)
+    aux' (Resize _ x) = aux x
 
     aux :: FR b a -> Logic a
     aux (Return x) = pure x
@@ -123,15 +161,16 @@ enum = observeAll . aux
       aux' x >>- \y ->
         aux (f y)
 
-regen :: FR b a -> [Bool] -> [a]
-regen rg cs = fst <$> aux rg cs
+regen :: FR b a -> Bits -> [a]
+regen rg cs = fst <$> aux rg (unBits cs)
   where
-    aux' :: Refl b a -> [Bool] -> [(a, [Bool])]
     aux' (Coin _) [] = []
     aux' (Coin _) (b : bs) = pure (b, bs)
     aux' (Lmap _ x) b = aux x b
     aux' (InternaliseMaybe x) b = aux x b
     aux' (Label _ x) b = aux x b
+    aux' (Sized f) b = aux (f 0) b
+    aux' (Resize _ x) b = aux x b
 
     aux :: FR b a -> [Bool] -> [(a, [Bool])]
     aux (Return x) b = pure (x, b)
@@ -150,6 +189,8 @@ parse = aux
       | s == s' = aux x ss
       | otherwise = []
     aux' (Label _ _) [] = []
+    aux' (Sized f) b = aux (f 0) b
+    aux' (Resize _ x) b = aux x b
 
     aux :: FR b a -> [String] -> [(a, [String])]
     aux (Return x) b = pure (x, b)
@@ -157,8 +198,14 @@ parse = aux
       (x, b') <- aux' mx b
       aux (f x) b'
 
-bits :: FR a a -> a -> [[Bool]]
-bits rg v = snd <$> aux rg v
+newtype Bits = Bits {unBits :: [Bool]}
+  deriving (Eq, Ord)
+
+instance Show Bits where
+  show (Bits bs) = concatMap (\b -> if b then "1" else "0") bs
+
+bits :: FR a a -> a -> [Bits]
+bits rg v = Bits . snd <$> aux rg v
   where
     aux' :: Refl b a -> b -> [(a, [Bool])]
     aux' (Coin _) _ = [(True, [True]), (False, [False])]
@@ -167,6 +214,8 @@ bits rg v = snd <$> aux rg v
       Nothing -> []
       Just a -> aux x a
     aux' (Label _ x) b = aux x b
+    aux' (Sized f) b = aux (f 0) b
+    aux' (Resize _ x) b = aux x b
 
     aux :: FR b a -> b -> [(a, [Bool])]
     aux (Return x) _ = pure (x, [])
@@ -195,6 +244,8 @@ choices rg v = snd <$> aux rg v
       Nothing -> []
       Just a -> aux x a
     aux' (Label _ x) b = second ((: []) . Draw) <$> aux x b
+    aux' (Sized f) b = aux (f 0) b
+    aux' (Resize _ x) b = aux x b
 
     aux :: FR b a -> b -> [(a, Choices)]
     aux (Return x) _ = pure (x, [])
@@ -213,6 +264,8 @@ unparse rg v = snd <$> aux rg v
       Nothing -> []
       Just a -> aux x a
     aux' (Label s x) b = second (s :) <$> aux x b
+    aux' (Sized f) b = aux (f 0) b
+    aux' (Resize _ x) b = aux x b
 
     aux :: FR b a -> b -> [(a, [String])]
     aux (Return x) _ = pure (x, [])
@@ -220,6 +273,28 @@ unparse rg v = snd <$> aux rg v
       (x, cs) <- aux' mx b
       (y, cs') <- aux (f x) b
       pure (y, cs ++ cs')
+
+complete :: FR a a -> a -> IO a
+complete g v = aux g v 30 >>= QC.generate . QC.elements
+  where
+    aux' :: Refl b a -> b -> Int -> IO [a]
+    aux' (Coin _) _ _ = pure [True, False]
+    aux' (Lmap f x) b s = do
+      catch
+        (evaluate (f b) >>= \a -> aux x a s)
+        (\(_ :: SomeException) -> (: []) <$> QC.generate (QC.resize s (gen x)))
+    aux' (InternaliseMaybe x) b s = case b of
+      Nothing -> pure []
+      Just a -> aux x a s
+    aux' (Label _ x) b s = aux x b s
+    aux' (Sized f) b s = aux (f s) b s
+    aux' (Resize s x) b _ = aux x b s
+
+    aux :: FR b a -> b -> Int -> IO [a]
+    aux (Return x) _ _ = pure [x]
+    aux (Bind mx f) b s = do
+      xs <- aux' mx b s
+      concat <$> mapM (\x -> aux (f x) b s) xs
 
 data Tree = Leaf | Node Tree Int Tree
   deriving (Show, Eq, Ord)
@@ -238,30 +313,27 @@ nodeRight :: Tree -> Maybe Tree
 nodeRight (Node _ _ r) = Just r
 nodeRight _ = Nothing
 
-reflPair :: FR a a -> FR b b -> FR (a, b) (a, b)
-reflPair x y = (,) <$> lmap fst x <*> lmap snd y
+choose :: (Int, Int) -> FR Int Int
+choose (lo, hi) = pick [label (show i) (exact i) | i <- [lo .. hi]]
 
-reflInt :: (Int, Int) -> FR Int Int
-reflInt (lo, hi) = pick [label (show i) (exact i) | i <- [lo .. hi]]
-
-reflTree :: FR Tree Tree
-reflTree = fix aux (10 :: Int)
+weirdTree :: FR Tree Tree
+weirdTree = sized aux
   where
-    aux self n
+    aux n
       | n == 0 = exact Leaf
       | otherwise = do
           pick
             [ exact Leaf,
               do
-                x <- comap nodeValue (reflInt (1, 10))
-                l <- comap nodeLeft (self (n - 1))
-                r <- comap nodeRight (self (n - 1))
+                x <- comap nodeValue (choose (1, 10))
+                l <- comap nodeLeft (aux (n - 1))
+                r <- comap nodeRight (aux (n - 1))
                 pure (Node l x r),
               exact (Node Leaf 2 Leaf)
             ]
 
-reflBSTpartial :: FR Void Tree
-reflBSTpartial = aux (1, 10)
+bstFwd :: FR Void Tree
+bstFwd = aux (1, 10)
   where
     aux (lo, hi)
       | lo > hi = return Leaf
@@ -269,30 +341,24 @@ reflBSTpartial = aux (1, 10)
           pick
             [ return Leaf,
               do
-                x <- fwd (reflInt (lo, hi))
+                x <- fwd (choose (lo, hi))
                 l <- fwd (aux (lo, x - 1))
                 r <- fwd (aux (x + 1, hi))
                 return (Node l x r)
             ]
 
-tryFocus :: Getting (First u') s u' -> FR u' v -> FR s v
-tryFocus = comap . preview
-
-focus :: Getting b s b -> FR b c -> FR s c
-focus = lmap . view
-
-reflBST :: FR Tree Tree
-reflBST = fix aux (1, 10)
+bst :: FR Tree Tree
+bst = aux (1, 10)
   where
-    aux self (lo, hi)
+    aux (lo, hi)
       | lo > hi = exact Leaf
       | otherwise = do
           pick
             [ label "leaf" (exact Leaf),
               label "node" $ do
-                x <- tryFocus (_Node . _2) (reflInt (lo, hi))
-                l <- tryFocus (_Node . _1) (self (lo, x - 1))
-                r <- tryFocus (_Node . _3) (self (x + 1, hi))
+                x <- tryFocus (_Node . _2) (choose (lo, hi))
+                l <- tryFocus (_Node . _1) (aux (lo, x - 1))
+                r <- tryFocus (_Node . _3) (aux (x + 1, hi))
                 exact (Node l x r)
             ]
 
@@ -305,11 +371,6 @@ hypoTree = do
       r <- draw (comap nodeRight hypoTree)
       exact (Node l 0 r)
     else exact Leaf
-  where
-    draw = label ""
-
-hypothesis :: FR a a -> a -> String
-hypothesis g = map (\case True -> '1'; False -> '0') . head . bits g
 
 data Expr
   = Num Int
@@ -339,30 +400,34 @@ expr =
         ]
     factor =
       pick
-        [ Num <$> tryFocus _Num (reflInt (1, 10)),
+        [ Num <$> tryFocus _Num (choose (1, 10)),
           token "(" *> expr <* token ")"
         ]
     token s = label s (pure ())
 
 main :: IO ()
 main = do
-  print (nub $ bits reflTree (Node Leaf 1 (Node Leaf 2 Leaf)))
-  print =<< QC.generate (gen reflTree)
-  print =<< QC.generate (gen reflBSTpartial)
-  let cs = head . nub $ bits reflBST (Node Leaf 1 (Node Leaf 2 Leaf))
+  print (nub $ bits weirdTree (Node Leaf 1 (Node Leaf 2 Leaf)))
+  print =<< QC.generate (gen weirdTree)
+  print =<< QC.generate (gen bstFwd)
+  let cs = head . nub $ bits bst (Node Leaf 1 (Node Leaf 2 Leaf))
   print cs
-  print (regen reflBST cs)
-  let ss = head . nub $ unparse reflBST (Node Leaf 1 (Node Leaf 2 Leaf))
+  print (regen bst cs)
+  let ss = head . nub $ unparse bst (Node Leaf 1 (Node Leaf 2 Leaf))
   print ss
-  print (parse reflBST ss)
+  print (parse bst ss)
   let n l = Node l 0
-  putStrLn $ hypothesis hypoTree (n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
-  putStrLn $ hypothesis hypoTree (n Leaf (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
-  putStrLn $ hypothesis hypoTree (n Leaf (n (n Leaf Leaf) Leaf))
-  putStrLn $ hypothesis hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
+  print $ bits hypoTree (n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
+  print $ bits hypoTree (n Leaf (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
+  print $ bits hypoTree (n Leaf (n (n Leaf Leaf) Leaf))
+  print $ bits hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
   print $ choices hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
-  print $ choices reflBST (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
-  let tii = (,,) <$> focus _1 reflBST <*> focus _2 (reflInt (1, 10)) <*> focus _3 (reflInt (1, 10)) :: FR (Tree, Int, Int) (Tree, Int, Int)
+  print $ choices bst (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
+  let tii = (,,) <$> focus _1 bst <*> focus _2 (choose (1, 10)) <*> focus _3 (choose (1, 10)) :: FR (Tree, Int, Int) (Tree, Int, Int)
   mapM_ print $ take 20 $ nub $ enum tii
   print $ map fst $ filter (null . snd) $ parse expr (words "( 1 + 2 ) * ( 3 + 3 * 4 )")
   print $ take 3 $ map concat $ unparse expr (Mul (Add (Num 1) (Num 2)) (Num 3))
+  let _hole_ = undefined
+  print =<< complete bst (Node _hole_ 5 _hole_)
+  print =<< complete bst (Node (Node _hole_ 2 Leaf) 5 (Node _hole_ 7 _hole_))
+  print =<< QC.generate (byExample bst [Node Leaf 1 Leaf, Node Leaf 2 (Node Leaf 6 Leaf), Node Leaf 3 Leaf])
