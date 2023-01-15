@@ -15,6 +15,20 @@
 module Freer2 where
 
 import BidirectionalProfunctors (Profmonad)
+import Bits
+  ( BitTree,
+    Bits (..),
+    bit,
+    bitsToInt,
+    draw,
+    dropDraws,
+    flatten,
+    listBits,
+    swapBits,
+    zeroDraws,
+    (+++),
+  )
+import qualified Bits as BitTree
 import Control.Exception (SomeException)
 import Control.Lens (Getting, makePrisms, over, preview, view, _1, _2, _3)
 import Control.Monad (ap, guard, (>=>))
@@ -22,10 +36,9 @@ import Control.Monad.Logic (Logic, MonadLogic ((>>-)), observeAll)
 import Data.Bifunctor (Bifunctor (second))
 import Data.Foldable (asum)
 import Data.List (group, nub, sort)
-import Data.Maybe
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Monoid (First)
 import Data.Profunctor (Profunctor (..))
-import Data.Ratio (denominator, numerator)
 import Data.Void (Void)
 import GHC.IO (catch, evaluate)
 import PartialProfunctors (PartialProfunctor (..))
@@ -77,13 +90,11 @@ comap fn = dimap' fn id
     dimap' :: (u -> Maybe u') -> (v -> v') -> FR u' v -> FR u v'
     dimap' f g = dimap f g . internaliseMaybe
 
-coin :: Weight -> FR b Bool
-coin w =
+getbits :: Int -> FR b Int
+getbits w =
   Bind
     ( Pick
-        [ (fromIntegral (numerator w), Nothing, pure True),
-          (fromIntegral (denominator w - numerator w), Nothing, pure False)
-        ]
+        [(1, Just (show (bitsToInt i)), pure (bitsToInt i)) | i <- listBits w]
     )
     Return
 
@@ -166,13 +177,15 @@ enum = observeAll . aux
       aux' x >>- \y ->
         aux (f y)
 
-regen :: FR b a -> Bits -> [a]
-regen rg cs = fst <$> aux rg (unBits cs)
+regen :: FR b a -> Bits -> Maybe a
+regen rg cs = listToMaybe (fst <$> aux rg (unBits cs))
   where
-    aux' (Pick [x]) bs = aux (view _3 x) bs
-    aux' (Pick (x : _)) (True : bs) = aux (view _3 x) bs
-    aux' (Pick (_ : xs)) (False : bs) = aux' (Pick xs) bs
-    aux' (Pick _) _ = []
+    aux' (Pick xs) b = do
+      let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
+      (bs, (_, _, x)) <- zip (listBits numBits) xs
+      guard (unBits bs == take numBits b)
+      (y, bs') <- aux x (drop numBits b)
+      pure (y, bs')
     aux' (Lmap _ x) b = aux x b
     aux' (InternaliseMaybe x) b = aux x b
 
@@ -202,21 +215,14 @@ parse = aux
       (x, b') <- aux' mx b
       aux (f x) b'
 
-newtype Bits = Bits {unBits :: [Bool]}
-  deriving (Eq, Ord)
-
-instance Show Bits where
-  show (Bits bs) = concatMap (\b -> if b then "1" else "0") bs
-
 bits :: FR a a -> a -> [Bits]
 bits rg v = Bits . snd <$> aux rg v
   where
     aux' (Pick xs) b = do
-      let final = length xs - 1
-      (i, (_, _, x)) <- zip [0, 1 ..] xs
-      (y, bs) <- aux x b
-      let bs' = if i == final then replicate i False else replicate i False ++ [True]
-      pure (y, bs' ++ bs)
+      let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
+      (bs, (_, _, x)) <- zip (listBits numBits) xs
+      (y, bs') <- aux x b
+      pure (y, unBits bs ++ bs')
     aux' (Lmap f x) b = aux x (f b)
     aux' (InternaliseMaybe x) b = case b of
       Nothing -> []
@@ -229,38 +235,25 @@ bits rg v = Bits . snd <$> aux rg v
       (y, cs') <- aux (f x) b
       pure (y, cs ++ cs')
 
-type Choices = [Choice]
-
-data Choice = Draw Choices | Flip Bool
-  deriving (Show, Eq, Ord)
-
-(+++) :: Choices -> Choices -> Choices
-(+++) xs ys = collapse (xs ++ ys)
-  where
-    collapse = filter (/= Draw []) . map (\case Draw cs -> Draw (collapse cs); x -> x)
-
-choices :: FR a a -> a -> [Choices]
+choices :: FR a a -> a -> [BitTree]
 choices rg v = snd <$> aux rg v
   where
     aux' (Pick xs) b = do
-      let final = length xs - 1
-      (i, (_, ms, x)) <- zip [0, 1 ..] xs
-      (y, bs) <- aux x b
-      let bs' = Flip <$> if i == final then replicate i False else replicate i False ++ [True]
-      case ms of
-        Nothing -> pure (y, bs' ++ bs)
-        Just _ -> pure (y, [Draw (bs' ++ bs)])
+      let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
+      (bs, (_, _, x)) <- zip (listBits numBits) xs
+      (y, bs') <- aux x b
+      pure (y, foldr ((+++) . bit) BitTree.empty (unBits bs) +++ bs')
     aux' (Lmap f x) b = aux x (f b)
     aux' (InternaliseMaybe x) b = case b of
       Nothing -> []
       Just a -> aux x a
 
-    aux :: FR b a -> b -> [(a, Choices)]
-    aux (Return x) _ = pure (x, [])
+    aux :: FR b a -> b -> [(a, BitTree)]
+    aux (Return x) _ = pure (x, BitTree.empty)
     aux (Bind mx f) b = do
       (x, cs) <- aux' mx b
       (y, cs') <- aux (f x) b
-      pure (y, cs +++ cs')
+      pure (y, draw cs +++ cs')
 
 unparse :: FR a a -> a -> [[String]]
 unparse rg v = snd <$> aux rg v
@@ -282,8 +275,11 @@ unparse rg v = snd <$> aux rg v
       (y, cs') <- aux (f x) b
       pure (y, cs ++ cs')
 
-complete :: FR a a -> a -> IO a
-complete g v = aux g v 30 >>= QC.generate . QC.elements
+complete :: FR a a -> a -> IO (Maybe a)
+complete g v = do
+  aux g v 30 >>= \case
+    [] -> pure Nothing
+    xs -> Just <$> QC.generate (QC.elements xs)
   where
     aux' (Pick xs) b s = concat <$> mapM (\(_, _, x) -> aux x b s) xs
     aux' (Lmap f x) b s = do
@@ -306,6 +302,15 @@ data Tree = Leaf | Node Tree Int Tree
   deriving (Show, Eq, Ord)
 
 makePrisms ''Tree
+
+height :: Tree -> Int
+height Leaf = 0
+height (Node l _ r) = 1 + max (height l) (height r)
+
+unbalanced :: Tree -> Bool
+unbalanced Leaf = False
+unbalanced (Node l _ r) =
+  unbalanced l || unbalanced r || abs (height l - height r) > 1
 
 nodeValue :: Tree -> Maybe Int
 nodeValue (Node _ x _) = Just x
@@ -371,15 +376,13 @@ bst = aux (1, 10)
 
 hypoTree :: FR Tree Tree
 hypoTree = do
-  c <- coin 0.5
-  if c
+  c <- getbits 1
+  if c /= 0
     then do
-      l <- draw (comap nodeLeft hypoTree)
-      r <- draw (comap nodeRight hypoTree)
+      l <- comap nodeLeft hypoTree
+      r <- comap nodeRight hypoTree
       exact (Node l 0 r)
     else exact Leaf
-  where
-    draw x = labelled [("DRAW", x)]
 
 data Expr
   = Num Int
@@ -394,31 +397,50 @@ expression = expr (10 :: Int)
   where
     expr n
       | n <= 1 = term n
-      | otherwise = oneof
-        [ do
-            x <- tryFocus (_Add . _1) (term (n `div` 2))
-            y <- token "+" *> tryFocus (_Add . _2) (expr (n `div` 2))
-            pure (Add x y),
-          term n
-        ]
+      | otherwise =
+          oneof
+            [ do
+                x <- tryFocus (_Add . _1) (term (n `div` 2))
+                y <- token "+" *> tryFocus (_Add . _2) (expr (n `div` 2))
+                pure (Add x y),
+              term n
+            ]
     term n
       | n <= 1 = factor n
-      | otherwise = oneof
-        [ do
-            x <- tryFocus (_Mul . _1) (factor (n `div` 2))
-            y <- token "*" *> tryFocus (_Mul . _2) (term (n `div` 2))
-            pure (Mul x y),
-          factor n
-        ]
+      | otherwise =
+          oneof
+            [ do
+                x <- tryFocus (_Mul . _1) (factor (n `div` 2))
+                y <- token "*" *> tryFocus (_Mul . _2) (term (n `div` 2))
+                pure (Mul x y),
+              factor n
+            ]
     factor n
       | n <= 1 = Num <$> tryFocus _Num (choose (1, 10))
       | otherwise =
-        oneof
-          [
-            Num <$> tryFocus _Num (choose (1, 10)),
-            token "(" *> expr (n - 1) <* token ")"
-          ]
+          oneof
+            [ Num <$> tryFocus _Num (choose (1, 10)),
+              token "(" *> expr (n - 1) <* token ")"
+            ]
     token s = labelled [(s, pure ())]
+
+shrink :: (a -> Bool) -> FR a a -> a -> a
+shrink p g =
+  fromMaybe (error "shrink: no solution")
+    . regen g
+    . flatten
+    . head
+    . applyShrinker swapBits
+    . applyShrinker zeroDraws
+    . applyShrinker dropDraws
+    . choices g
+  where
+    applyShrinker :: (BitTree -> [BitTree]) -> [BitTree] -> [BitTree]
+    applyShrinker s ts =
+      let ts' = take 1 . sort . filter (any p . regen g . flatten) . concatMap s $ ts
+       in case ts' of
+            [] -> ts
+            _ -> applyShrinker s ts'
 
 main :: IO ()
 main = do
@@ -438,6 +460,7 @@ main = do
   print $ bits hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
   print $ choices hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
   print $ choices bst (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
+  mapM_ print $ zeroDraws $ head $ choices bst (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
   let tii = (,,) <$> focus _1 bst <*> focus _2 (choose (1, 10)) <*> focus _3 (choose (1, 10)) :: FR (Tree, Int, Int) (Tree, Int, Int)
   mapM_ print $ take 20 $ nub $ enum tii
   print $ map fst $ filter (null . snd) $ parse expression (words "( 1 + 2 ) * ( 3 + 3 * 4 )")
@@ -446,3 +469,6 @@ main = do
   print =<< complete bst (Node _hole_ 5 _hole_)
   print =<< complete bst (Node (Node _hole_ 2 Leaf) 5 (Node _hole_ 7 _hole_))
   print =<< QC.generate (byExample expression [Mul (Num 1) (Num 2), Mul (Num 3) (Num 4)])
+
+  let t = n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf)
+  print $ shrink unbalanced hypoTree t
