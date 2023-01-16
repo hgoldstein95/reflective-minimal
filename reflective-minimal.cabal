@@ -33,6 +33,7 @@ library
       HedgehogTree
       PartialProfunctors
       Reflective
+      SCBench
       UnGenFChoices
       UnGenList
       UniformGen
