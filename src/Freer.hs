@@ -12,7 +12,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module Freer2 where
+module Freer where
 
 import BidirectionalProfunctors (Profmonad)
 import Bits
@@ -115,6 +115,9 @@ exact x = comap (\y -> if y == x then Just y else Nothing) $ oneof [pure x]
 
 choose :: (Int, Int) -> FR Int Int
 choose (lo, hi) = labelled [(show i, exact i) | i <- [lo .. hi]]
+
+integer :: FR Int Int
+integer = sized $ \n -> choose (-n, n)
 
 fwd :: FR c a -> FR Void a
 fwd = lmap (\case {})
@@ -275,26 +278,27 @@ bits rg v = Bits . snd <$> aux rg v Nothing
       pure (y, cs ++ cs')
 
 choices :: FR a a -> a -> [BitTree]
-choices rg v = snd <$> aux rg v
+choices rg v = snd <$> aux rg v Nothing
   where
-    aux' :: Refl b a -> b -> [(a, BitTree)]
-    aux' (Pick xs) b = do
+    aux' :: Refl b a -> b -> Maybe Int -> [(a, BitTree)]
+    aux' (Pick xs) b s = do
       let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
       (bs, (_, _, x)) <- zip (listBits numBits) xs
-      (y, bs') <- aux x b
+      (y, bs') <- aux x b s
       pure (y, foldr ((+++) . bit) BitTree.empty (unBits bs) +++ bs')
-    aux' (Lmap f x) b = aux' x (f b)
-    aux' (InternaliseMaybe x) b = case b of
+    aux' (Lmap f x) b s = aux' x (f b) s
+    aux' (InternaliseMaybe x) b s = case b of
       Nothing -> []
-      Just a -> aux' x a
-    aux' GetSize _ = error "choices: GetSize"
-    aux' (Resize {}) _ = error "choices: Resize"
+      Just a -> aux' x a s
+    aux' GetSize _ Nothing = pure (30, BitTree.empty)
+    aux' GetSize _ (Just n) = pure (n, BitTree.empty)
+    aux' (Resize n x) b _ = aux' x b (Just n)
 
-    aux :: FR b a -> b -> [(a, BitTree)]
-    aux (Return x) _ = pure (x, BitTree.empty)
-    aux (Bind mx f) b = do
-      (x, cs) <- aux' mx b
-      (y, cs') <- aux (f x) b
+    aux :: FR b a -> b -> Maybe Int -> [(a, BitTree)]
+    aux (Return x) _ _ = pure (x, BitTree.empty)
+    aux (Bind mx f) b s = do
+      (x, cs) <- aux' mx b s
+      (y, cs') <- aux (f x) b s
       pure (y, draw cs +++ cs')
 
 unparse :: FR a a -> a -> [[String]]
