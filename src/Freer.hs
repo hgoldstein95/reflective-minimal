@@ -34,7 +34,7 @@ import Control.Lens (Getting, makePrisms, over, preview, view, _1, _2, _3)
 import Control.Monad (ap, guard, (>=>))
 import Control.Monad.Logic (Logic, MonadLogic ((>>-)), observeAll)
 import Data.Bifunctor (Bifunctor (second))
-import Data.Foldable (asum)
+import Data.Foldable (asum, find)
 import Data.List (group, nub, sort)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Monoid (First)
@@ -57,8 +57,21 @@ type FR b a = Freer2 Refl b a
 
 data Refl b a where
   Pick :: [(Int, Maybe String, FR b a)] -> Refl b a
-  Lmap :: (c -> d) -> FR d a -> Refl c a
-  InternaliseMaybe :: FR b a -> Refl (Maybe b) a
+  Lmap :: (c -> d) -> Refl d a -> Refl c a
+  InternaliseMaybe :: Refl b a -> Refl (Maybe b) a
+
+derivative :: FR b a -> String -> Maybe (FR b a)
+derivative (Return _) _ = Nothing
+derivative (Bind r f) s = do
+  x <- drefl r
+  pure (x >>= f)
+  where
+    drefl :: Refl b a -> Maybe (FR b a)
+    drefl (Pick xs) = do
+      (_, _, x) <- find ((== Just s) . view _2) xs
+      pure x
+    drefl (Lmap g x) = lmap g <$> drefl x
+    drefl (InternaliseMaybe x) = internaliseMaybe <$> drefl x
 
 -- Typeclass Instances Combinators
 
@@ -77,18 +90,16 @@ instance Monad (Freer2 f b) where
 
 instance Profunctor (Freer2 Refl) where
   dimap _ g (Return a) = Return (g a)
-  dimap f g x = Bind (Lmap f (g <$> x)) Return
+  dimap f g (Bind x h) = Bind (Lmap f x) (dimap f g . h)
 
 instance Profmonad (Freer2 Refl)
 
 instance PartialProfunctor (Freer2 Refl) where
-  internaliseMaybe x = Bind (InternaliseMaybe x) Return
+  internaliseMaybe (Return a) = Return a
+  internaliseMaybe (Bind x f) = Bind (InternaliseMaybe x) (internaliseMaybe . f)
 
 comap :: (u -> Maybe u') -> FR u' v -> FR u v
-comap fn = dimap' fn id
-  where
-    dimap' :: (u -> Maybe u') -> (v -> v') -> FR u' v -> FR u v'
-    dimap' f g = dimap f g . internaliseMaybe
+comap f = dimap f id . internaliseMaybe
 
 getbits :: Int -> FR b Int
 getbits w =
@@ -111,7 +122,7 @@ oneof :: [FR b a] -> FR b a
 oneof xs = Bind (Pick (map (1,Nothing,) xs)) Return
 
 exact :: Eq v => v -> FR v v
-exact x = comap (\y -> if y == x then Just y else Nothing) (pure x)
+exact x = comap (\y -> if y == x then Just y else Nothing) $ oneof [pure x]
 
 choose :: (Int, Int) -> FR Int Int
 choose (lo, hi) = labelled [(show i, exact i) | i <- [lo .. hi]]
@@ -130,9 +141,10 @@ focus = lmap . view
 gen :: FR b a -> Gen a
 gen = aux
   where
+    aux' :: Refl b a -> Gen a
     aux' (Pick xs) = QC.frequency (map (\(w, _, x) -> (w, aux x)) xs)
-    aux' (Lmap _ x) = aux x
-    aux' (InternaliseMaybe x) = aux x
+    aux' (Lmap _ x) = aux' x
+    aux' (InternaliseMaybe x) = aux' x
 
     aux :: FR b a -> Gen a
     aux (Return x) = pure x
@@ -143,9 +155,10 @@ gen = aux
 weighted :: FR b a -> (String -> Int) -> Gen a
 weighted = aux
   where
+    aux' :: Refl b a -> (String -> Int) -> Gen a
     aux' (Pick xs) w = QC.frequency (map (\(_, s, x) -> (maybe 1 w s, aux x w)) xs)
-    aux' (Lmap _ x) w = aux x w
-    aux' (InternaliseMaybe x) w = aux x w
+    aux' (Lmap _ x) w = aux' x w
+    aux' (InternaliseMaybe x) w = aux' x w
 
     aux :: FR b a -> (String -> Int) -> Gen a
     aux (Return x) _ = pure x
@@ -167,9 +180,10 @@ byExample g xs = weighted g (\s -> fromMaybe 0 (lookup s (weights g xs)))
 enum :: FR b a -> [a]
 enum = observeAll . aux
   where
+    aux' :: Refl b a -> Logic a
     aux' (Pick xs) = asum (map (aux . view _3) xs)
-    aux' (Lmap _ x) = aux x
-    aux' (InternaliseMaybe x) = aux x
+    aux' (Lmap _ x) = aux' x
+    aux' (InternaliseMaybe x) = aux' x
 
     aux :: FR b a -> Logic a
     aux (Return x) = pure x
@@ -180,14 +194,15 @@ enum = observeAll . aux
 regen :: FR b a -> Bits -> Maybe a
 regen rg cs = listToMaybe (fst <$> aux rg (unBits cs))
   where
+    aux' :: Refl b a -> [Bool] -> [(a, [Bool])]
     aux' (Pick xs) b = do
       let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
       (bs, (_, _, x)) <- zip (listBits numBits) xs
       guard (unBits bs == take numBits b)
       (y, bs') <- aux x (drop numBits b)
       pure (y, bs')
-    aux' (Lmap _ x) b = aux x b
-    aux' (InternaliseMaybe x) b = aux x b
+    aux' (Lmap _ x) b = aux' x b
+    aux' (InternaliseMaybe x) b = aux' x b
 
     aux :: FR b a -> [Bool] -> [(a, [Bool])]
     aux (Return x) b = pure (x, b)
@@ -198,6 +213,7 @@ regen rg cs = listToMaybe (fst <$> aux rg (unBits cs))
 parse :: FR b a -> [String] -> [(a, [String])]
 parse = aux
   where
+    aux' :: Refl b a -> [String] -> [(a, [String])]
     aux' (Pick xs) (s' : ss) = do
       (_, ms, x) <- xs
       case ms of
@@ -206,8 +222,8 @@ parse = aux
           guard (s == s')
           aux x ss
     aux' (Pick _) [] = []
-    aux' (Lmap _ x) b = aux x b
-    aux' (InternaliseMaybe x) b = aux x b
+    aux' (Lmap _ x) b = aux' x b
+    aux' (InternaliseMaybe x) b = aux' x b
 
     aux :: FR b a -> [String] -> [(a, [String])]
     aux (Return x) b = pure (x, b)
@@ -218,15 +234,16 @@ parse = aux
 bits :: FR a a -> a -> [Bits]
 bits rg v = Bits . snd <$> aux rg v
   where
+    aux' :: Refl b a -> b -> [(a, [Bool])]
     aux' (Pick xs) b = do
       let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
       (bs, (_, _, x)) <- zip (listBits numBits) xs
       (y, bs') <- aux x b
       pure (y, unBits bs ++ bs')
-    aux' (Lmap f x) b = aux x (f b)
+    aux' (Lmap f x) b = aux' x (f b)
     aux' (InternaliseMaybe x) b = case b of
       Nothing -> []
-      Just a -> aux x a
+      Just a -> aux' x a
 
     aux :: FR b a -> b -> [(a, [Bool])]
     aux (Return x) _ = pure (x, [])
@@ -238,15 +255,16 @@ bits rg v = Bits . snd <$> aux rg v
 choices :: FR a a -> a -> [BitTree]
 choices rg v = snd <$> aux rg v
   where
+    aux' :: Refl b a -> b -> [(a, BitTree)]
     aux' (Pick xs) b = do
       let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
       (bs, (_, _, x)) <- zip (listBits numBits) xs
       (y, bs') <- aux x b
       pure (y, foldr ((+++) . bit) BitTree.empty (unBits bs) +++ bs')
-    aux' (Lmap f x) b = aux x (f b)
+    aux' (Lmap f x) b = aux' x (f b)
     aux' (InternaliseMaybe x) b = case b of
       Nothing -> []
-      Just a -> aux x a
+      Just a -> aux' x a
 
     aux :: FR b a -> b -> [(a, BitTree)]
     aux (Return x) _ = pure (x, BitTree.empty)
@@ -258,15 +276,16 @@ choices rg v = snd <$> aux rg v
 unparse :: FR a a -> a -> [[String]]
 unparse rg v = snd <$> aux rg v
   where
+    aux' :: Refl b a -> b -> [(a, [String])]
     aux' (Pick xs) b = do
       (_, ms, x) <- xs
       case ms of
         Nothing -> aux x b
         Just s -> second (s :) <$> aux x b
-    aux' (Lmap f x) b = aux x (f b)
+    aux' (Lmap f x) b = aux' x (f b)
     aux' (InternaliseMaybe x) b = case b of
       Nothing -> []
-      Just a -> aux x a
+      Just a -> aux' x a
 
     aux :: FR b a -> b -> [(a, [String])]
     aux (Return x) _ = pure (x, [])
@@ -277,24 +296,25 @@ unparse rg v = snd <$> aux rg v
 
 complete :: FR a a -> a -> IO (Maybe a)
 complete g v = do
-  aux g v 30 >>= \case
+  aux g v >>= \case
     [] -> pure Nothing
     xs -> Just <$> QC.generate (QC.elements xs)
   where
-    aux' (Pick xs) b s = concat <$> mapM (\(_, _, x) -> aux x b s) xs
-    aux' (Lmap f x) b s = do
+    aux' :: Refl b a -> b -> IO [a]
+    aux' (Pick xs) b = concat <$> mapM (\(_, _, x) -> aux x b) xs
+    aux' (Lmap f x) b = do
       catch
-        (evaluate (f b) >>= \a -> aux x a s)
-        (\(_ :: SomeException) -> (: []) <$> QC.generate (QC.resize s (gen x)))
-    aux' (InternaliseMaybe x) b s = case b of
+        (evaluate (f b) >>= \a -> aux' x a)
+        (\(_ :: SomeException) -> (: []) <$> QC.generate (gen (Bind x Return)))
+    aux' (InternaliseMaybe x) b = case b of
       Nothing -> pure []
-      Just a -> aux x a s
+      Just a -> aux' x a
 
-    aux :: FR b a -> b -> Int -> IO [a]
-    aux (Return x) _ _ = pure [x]
-    aux (Bind mx f) b s = do
-      xs <- aux' mx b s
-      concat <$> mapM (\x -> aux (f x) b s) xs
+    aux :: FR b a -> b -> IO [a]
+    aux (Return x) _ = pure [x]
+    aux (Bind mx f) b = do
+      xs <- aux' mx b
+      concat <$> mapM (\x -> aux (f x) b) xs
 
 -- Examples
 
@@ -460,9 +480,6 @@ main = do
   print $ bits hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
   print $ choices hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
   print $ choices bst (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
-  mapM_ print $ zeroDraws $ head $ choices bst (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
-  let tii = (,,) <$> focus _1 bst <*> focus _2 (choose (1, 10)) <*> focus _3 (choose (1, 10)) :: FR (Tree, Int, Int) (Tree, Int, Int)
-  mapM_ print $ take 20 $ nub $ enum tii
   print $ map fst $ filter (null . snd) $ parse expression (words "( 1 + 2 ) * ( 3 + 3 * 4 )")
   print $ take 3 $ map concat $ unparse expression (Mul (Add (Num 1) (Num 2)) (Num 3))
   let _hole_ = undefined
