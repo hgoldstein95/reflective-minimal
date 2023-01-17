@@ -21,7 +21,6 @@ import Bits
     bit,
     bitsToInt,
     draw,
-    dropDraws,
     flatten,
     listBits,
     swapBits,
@@ -30,12 +29,13 @@ import Bits
   )
 import qualified Bits as BitTree
 import Control.Exception (SomeException)
-import Control.Lens (Getting, makePrisms, over, preview, view, _1, _2, _3)
+import Control.Lens (Getting, makePrisms, over, preview, view, _1, _2, _3, _head, _tail)
 import Control.Monad (ap, guard, (>=>))
 import Control.Monad.Logic (Logic, MonadLogic ((>>-)), observeAll)
 import Data.Bifunctor (Bifunctor (second))
+import Data.Char (chr, ord)
 import Data.Foldable (asum)
-import Data.List (group, nub, sort)
+import Data.List (group, nub, sort, transpose)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Monoid (First)
 import Data.Profunctor (Profunctor (..))
@@ -117,7 +117,49 @@ choose :: (Int, Int) -> FR Int Int
 choose (lo, hi) = labelled [(show i, exact i) | i <- [lo .. hi]]
 
 integer :: FR Int Int
-integer = sized $ \n -> choose (-n, n)
+integer = sized $ \n -> labelled [(show i, exact i) | i <- concat (transpose [[0 .. n], reverse [-n .. -1]])]
+
+char :: FR Char Char
+char = sized $ \n -> labelled [(show i, exact (chr i)) | i <- [ord 'a' .. ord 'a' + n]]
+
+alphaNum :: FR Char Char
+alphaNum = labelled [(show c, exact c) | c <- ['a', 'b', 'c', '1', '2', '3']]
+
+bool :: FR Bool Bool
+bool = oneof [exact True, exact False]
+
+listOf :: Eq a => FR a a -> FR [a] [a]
+listOf g = sized aux
+  where
+    aux 0 = exact []
+    aux n =
+      frequency
+        [ (1, exact []),
+          ( n,
+            do
+              x <- tryFocus _head g
+              xs <- tryFocus _tail (aux (n - 1))
+              exact (x : xs)
+          )
+        ]
+
+nonEmptyListOf :: Eq a => FR a a -> FR [a] [a]
+nonEmptyListOf g = do
+  x <- tryFocus _head g
+  xs <- tryFocus _tail (sized aux)
+  exact (x : xs)
+  where
+    aux 0 = exact []
+    aux n =
+      frequency
+        [ (1, exact []),
+          ( n,
+            do
+              x <- tryFocus _head g
+              xs <- tryFocus _tail (aux (n - 1))
+              exact (x : xs)
+          )
+        ]
 
 fwd :: FR c a -> FR Void a
 fwd = lmap (\case {})
@@ -134,6 +176,22 @@ resize w (Bind x f) = Bind (Resize w x) (resize w . f)
 
 sized :: (Int -> FR b a) -> FR b a
 sized = Bind GetSize
+
+suchThat :: FR a a -> (a -> Bool) -> FR a a
+g `suchThat` p = comap (\x -> if p x then Just x else Nothing) aux
+  where
+    aux = do
+      x <- g
+      if p x then return x else aux
+
+suchThatMaybe :: FR a a -> (a -> Bool) -> FR a (Maybe a)
+g `suchThatMaybe` p = comap (\x -> if p x then Just x else Nothing) (sized (\n -> try n (2 * n)))
+  where
+    try m n
+      | m > n = return Nothing
+      | otherwise = do
+          x <- resize m g
+          if p x then return (Just x) else try (m + 1) n
 
 -- -- Interpretations
 -- derivative :: FR b a -> String -> Maybe (FR b a)
@@ -484,15 +542,12 @@ shrink p g =
     . head
     . applyShrinker swapBits
     . applyShrinker zeroDraws
-    . applyShrinker dropDraws
     . choices g
   where
     applyShrinker :: (BitTree -> [BitTree]) -> [BitTree] -> [BitTree]
     applyShrinker s ts =
-      let ts' = take 1 . sort . filter (any p . regen g . flatten) . concatMap s $ ts
-       in case ts' of
-            [] -> ts
-            _ -> applyShrinker s ts'
+      let ts' = take 1 . filter (any p . regen g . flatten) . sort . concatMap s $ ts
+       in if null ts' || ts' == ts then ts else applyShrinker s ts'
 
 main :: IO ()
 main = do

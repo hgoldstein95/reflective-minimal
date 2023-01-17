@@ -1,4 +1,6 @@
 module Main (main) where
 
+import qualified ParserExample
+
 main :: IO ()
-main = print "Test"
+main = ParserExample.main

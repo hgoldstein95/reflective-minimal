@@ -30,10 +30,12 @@ library
       FR
       Freer
       GenList
+      HeapExample
       HedgehogTree
+      ListExample
+      ParserExample
       PartialProfunctors
       Reflective
-      SCBench
       UnGenFChoices
       UnGenList
       UniformGen

@@ -1,17 +1,35 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module SCBench where
+module HeapExample where
 
 --------------------------------------------------------------------------
 -- imports
 
 import Control.Lens (makePrisms, _1, _2, _3)
+import Control.Monad (replicateM)
 import Data.List (sort, (\\))
 import Freer (FR)
 import qualified Freer as FR
+import GHC.Generics (Generic)
 import Test.QuickCheck
+  ( Arbitrary (..),
+    Args (chatty),
+    Property,
+    Result (Failure, failingTestCase),
+    Testable (propertyForAllShrinkShow),
+    cover,
+    frequency,
+    genericShrink,
+    quickCheckWithResult,
+    shrinkNothing,
+    sized,
+    stdArgs,
+    suchThatMaybe,
+  )
 
 --------------------------------------------------------------------------
 -- skew heaps
@@ -19,7 +37,7 @@ import Test.QuickCheck
 data Heap a
   = Node a (Heap a) (Heap a)
   | Empty
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Read, Generic)
 
 makePrisms ''Heap
 
@@ -145,49 +163,63 @@ reflHeap = FR.sized (arbHeap Nothing)
       FR.frequency $
         (1, FR.exact Empty)
           : [ ( 7,
-                FR.sized
-                  ( \bound ->
-                      if Just bound < mx
-                        then FR.exact Empty
-                        else do
-                          y <- FR.tryFocus (_Node . _1) (reflAtLeast mx)
-                          let arbHeap2 = arbHeap (Just y) (n `div` 2)
-                          Node y
-                            <$> FR.tryFocus (_Node . _2) arbHeap2
-                            <*> FR.tryFocus (_Node . _3) arbHeap2
-                  )
+                do
+                  my <- FR.tryFocus (_Node . _1) (FR.integer `FR.suchThatMaybe` ((>= mx) . Just))
+                  case my of
+                    Nothing -> FR.exact Empty
+                    Just y -> Node y <$> FR.tryFocus (_Node . _2) arbHeap2 <*> FR.tryFocus (_Node . _3) arbHeap2
+                      where
+                        arbHeap2 = arbHeap (Just y) (n `div` 2)
               )
               | n > 0
             ]
 
--- instance (Ord a, Arbitrary a) => Arbitrary (Heap a) where
---   arbitrary = sized (arbHeap Nothing)
---     where
---       arbHeap mx n =
---         frequency $
---           (1, return Empty)
---             : [ ( 7,
---                   do
---                     my <- arbitrary `suchThatMaybe` ((>= mx) . Just)
---                     case my of
---                       Nothing -> return Empty
---                       Just y -> Node y <$> arbHeap2 <*> arbHeap2
---                         where
---                           arbHeap2 = arbHeap (Just y) (n `div` 2)
---                 )
---                 | n > 0
---               ]
-
 instance Arbitrary (Heap Int) where
-  arbitrary = FR.gen reflHeap
-  shrink v =
-    let v' = FR.shrink (not . prop_ToSortedList) reflHeap v
-     in [v' | v /= v']
+  arbitrary = sized (arbHeap Nothing)
+    where
+      arbHeap mx n =
+        frequency $
+          (1, return Empty)
+            : [ ( 7,
+                  do
+                    my <- arbitrary `suchThatMaybe` ((>= mx) . Just)
+                    case my of
+                      Nothing -> return Empty
+                      Just y -> Node y <$> arbHeap2 <*> arbHeap2
+                        where
+                          arbHeap2 = arbHeap (Just y) (n `div` 2)
+                )
+                | n > 0
+              ]
+  shrink = genericShrink
 
---------------------------------------------------------------------------
--- main
+counterExampleNone :: (Show a, Read a, Arbitrary a) => (a -> Bool) -> IO a
+counterExampleNone p =
+  quickCheckWithResult (stdArgs {chatty = False}) (propertyForAllShrinkShow arbitrary shrinkNothing ((: []) . show) p) >>= \case
+    Failure {failingTestCase = [v]} -> pure (read v)
+    _ -> error "counterExampleFR: no counterexample found"
 
-return []
+counterExampleGeneric :: (Show a, Read a, Arbitrary a) => (a -> Bool) -> (a -> Bool) -> IO a
+counterExampleGeneric p inv =
+  quickCheckWithResult (stdArgs {chatty = False}) (propertyForAllShrinkShow arbitrary (filter inv . shrink) ((: []) . show) p) >>= \case
+    Failure {failingTestCase = [v]} -> pure (read v)
+    _ -> error "counterExampleFR: no counterexample found"
+
+counterExampleFR :: (Eq a, Show a, Read a) => FR a a -> (a -> Bool) -> IO a
+counterExampleFR g p =
+  quickCheckWithResult (stdArgs {chatty = False}) (propertyForAllShrinkShow (FR.gen g) (\v -> let v' = FR.shrink (not . p) g v in [v' | v /= v']) ((: []) . show) p) >>= \case
+    Failure {failingTestCase = [v]} -> pure (read v)
+    _ -> error "counterExampleFR: no counterexample found"
+
+average :: [Int] -> Double
+average xs = fromIntegral (sum xs) / fromIntegral (length xs)
 
 main :: IO ()
-main = quickCheck prop_ToSortedList
+main = do
+  measure $ counterExampleNone prop_ToSortedList
+  measure $ counterExampleGeneric prop_ToSortedList invariant
+  measure $ counterExampleFR reflHeap prop_ToSortedList
+  where
+    measure x = do
+      xs <- replicateM 100 x
+      print $ average (size <$> xs)

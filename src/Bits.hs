@@ -68,19 +68,9 @@ flatten = Bits . aux . unBitTree
     aux (Bit b : bs) = b : aux bs
     aux (Draw xs : bs) = aux xs ++ aux bs
 
-dropDraws :: BitTree -> [BitTree]
-dropDraws x = filter (< x) . nub . map BitTree . aux . unBitTree $ x
-  where
-    aux :: [BitNode] -> [[BitNode]]
-    aux [] = [[]]
-    aux (Bit b : bs) = (Bit b :) <$> aux bs
-    aux (Draw xs : bs) = ((Draw xs :) <$> aux bs) <|> [bs]
-
 zeroDraws :: BitTree -> [BitTree]
-zeroDraws x = filter (< x) . nub . map BitTree . aux . unBitTree $ x
+zeroDraws = map BitTree . aux . unBitTree
   where
-    flat = unBits . flatten . BitTree
-
     aux :: [BitNode] -> [[BitNode]]
     aux [] = [[]]
     aux (Bit b : bs) = (Bit b :) <$> aux bs
@@ -92,15 +82,32 @@ zeroDraws x = filter (< x) . nub . map BitTree . aux . unBitTree $ x
     zeros :: [BitNode] -> [[BitNode]]
     zeros =
       map (map Bit)
-        . filter (not . null)
         . tails
         . map (const False)
-        . flat
+        . unBits
+        . flatten
+        . BitTree
 
 swapBits :: BitTree -> [BitTree]
-swapBits v = filter (< v) . map (BitTree . map Bit) . aux . unBits . flatten $ v
+swapBits = map (BitTree . map Bit) . aux . unBits . flatten
   where
     aux :: [Bool] -> [[Bool]]
     aux (True : False : bs) = ([False, True] ++ bs) : (([True, False] ++) <$> bs : aux bs)
     aux (x : xs) = (x :) <$> aux xs
     aux [] = [[]]
+
+pickSubTree :: BitTree -> [BitTree]
+pickSubTree x = filter (< x) . nub . map BitTree . aux . unBitTree $ x
+  where
+    aux :: [BitNode] -> [[BitNode]]
+    aux [] = []
+    aux (Bit _ : bs) = aux bs
+    aux (Draw xs : bs) = aux bs <|> aux xs <|> [xs]
+
+-- simplifyDraws :: BitTree -> BitTree
+-- simplifyDraws = BitTree . aux . unBitTree
+--   where
+--     aux :: [BitNode] -> [BitNode]
+--     aux [] = []
+--     aux (Draw xs : bs) | length xs > 5 = aux xs ++ aux bs
+--     aux (b : bs) = b : aux bs
