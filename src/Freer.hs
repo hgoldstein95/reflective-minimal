@@ -44,7 +44,6 @@ import Data.Monoid (First)
 import Data.Ord (comparing)
 import Data.Profunctor (Profunctor (..))
 import Data.Void (Void)
-import Debug.Trace (traceShowId)
 import GHC.IO (catch, evaluate)
 import PartialProfunctors (PartialProfunctor (..))
 import Test.QuickCheck (Args (maxSuccess), Gen, forAll, quickCheckWith, stdArgs)
@@ -309,34 +308,35 @@ regen rg cs = listToMaybe (fst <$> aux rg (unBits cs) Nothing)
       aux (f x) b' s
 
 parse :: FR b a -> [String] -> [(a, [String])]
-parse = aux
+parse g v = aux g v Nothing
   where
     search [] = []
     search xs = (: []) . minimumBy (comparing (length . snd)) $ xs
     -- search = take 1
 
-    aux' :: Refl b a -> [String] -> [(a, [String])]
-    aux' (Pick xs) st = search $ do
+    aux' :: Refl b a -> [String] -> Maybe Int -> [(a, [String])]
+    aux' (Pick xs) st sz = search $ do
       (_, ms, x) <- xs
       case ms of
-        Nothing -> aux x st
+        Nothing -> aux x st sz
         Just s -> do
           case st of
             s' : ss -> do
               guard (s == s')
-              aux x ss
+              aux x ss sz
             _ -> []
-    aux' (Pick _) [] = []
-    aux' (Lmap _ x) b = aux' x b
-    aux' (InternaliseMaybe x) b = aux' x b
-    aux' GetSize _ = error "parse: GetSize"
-    aux' (Resize {}) _ = error "parse: Resize"
+    aux' (ChooseInteger (lo, hi)) s _ = (,s) <$> [lo .. hi]
+    aux' (Lmap _ x) b sz = aux' x b sz
+    aux' (InternaliseMaybe x) b sz = aux' x b sz
+    aux' GetSize b (Just sz) = pure (sz, b)
+    aux' GetSize b _ = pure (30, b)
+    aux' (Resize sz x) b _ = aux' x b (Just sz)
 
-    aux :: FR b a -> [String] -> [(a, [String])]
-    aux (Return x) b = pure (x, b)
-    aux (Bind mx f) b = do
-      (x, b') <- aux' mx b
-      aux (f x) b'
+    aux :: FR b a -> [String] -> Maybe Int -> [(a, [String])]
+    aux (Return x) b _ = pure (x, b)
+    aux (Bind mx f) b s = do
+      (x, b') <- aux' mx b s
+      aux (f x) b' s
 
 choices :: FR a a -> a -> [BitTree]
 choices rg v = snd <$> aux rg v Nothing
@@ -372,6 +372,7 @@ unparse rg v = snd <$> aux rg v
       case ms of
         Nothing -> aux x b
         Just s -> second (s :) <$> aux x b
+    aux' (ChooseInteger _) b = pure (b, [])
     aux' (Lmap f x) b = aux' x (f b)
     aux' (InternaliseMaybe x) b = case b of
       Nothing -> []
@@ -394,6 +395,7 @@ complete g v = do
   where
     aux' :: Refl b a -> b -> IO [a]
     aux' (Pick xs) b = concat <$> mapM (\(_, _, x) -> aux x b) xs
+    aux' (ChooseInteger (lo, hi)) _ = pure [lo .. hi] -- TODO: Check on this
     aux' (Lmap f x) b = do
       catch
         (evaluate (f b) >>= \a -> aux' x a)
