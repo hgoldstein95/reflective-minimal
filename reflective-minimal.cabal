@@ -27,11 +27,14 @@ library
   exposed-modules:
       BidirectionalProfunctors
       Bits
+      Bound5Example
+      CalcExample
       FR
       Freer
       GenList
       HeapExample
       HedgehogTree
+      JSONExample
       ListExample
       ParserExample
       PartialProfunctors

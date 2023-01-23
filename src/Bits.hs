@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Bits where
 
 import Control.Applicative ((<|>))
@@ -76,8 +78,8 @@ zeroDraws = map BitTree . aux . unBitTree
     aux (Bit b : bs) = (Bit b :) <$> aux bs
     aux (Draw xs : bs) =
       ((Draw xs :) <$> aux bs)
-        <|> ((\ys -> Draw ys : bs) <$> aux xs)
-        <|> ((\ys -> Draw ys : bs) <$> zeros xs)
+        <|> ((\case [] -> bs; ys -> Draw ys : bs) <$> aux xs)
+        <|> ((\case [] -> bs; ys -> Draw ys : bs) <$> zeros xs)
 
     zeros :: [BitNode] -> [[BitNode]]
     zeros =
@@ -111,3 +113,22 @@ pickSubTree x = filter (< x) . nub . map BitTree . aux . unBitTree $ x
 --     aux [] = []
 --     aux (Draw xs : bs) | length xs > 5 = aux xs ++ aux bs
 --     aux (b : bs) = b : aux bs
+
+integerToBits :: (Integer, Integer) -> Integer -> [Bool]
+integerToBits (lo, hi) j = ((j < 0) :) . reverse $ aux bitWidth (abs j)
+  where
+    bitWidth = ceiling $ logBase 2 (fromIntegral (hi - lo + 1) :: Double) :: Int
+    aux 0 _ = []
+    aux n i = odd i : aux (n - 1) (i `div` 2)
+
+bitsToInteger :: (Integer, Integer) -> [Bool] -> Maybe (Integer, [Bool])
+bitsToInteger _ [] = Nothing
+bitsToInteger (lo, hi) (sign : bbs) =
+  if length bbs < bitWidth
+    then Nothing
+    else Just ((* if sign then (-1) else 1) . aux (0 :: Int) . reverse $ take bitWidth bbs, drop bitWidth bbs)
+  where
+    bitWidth = ceiling $ logBase 2 (fromIntegral (hi - lo + 1) :: Double) :: Int
+    aux _ [] = 0
+    aux n (True : bs) = 2 ^ n + aux (n + 1) bs
+    aux n (False : bs) = aux (n + 1) bs

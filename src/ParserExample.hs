@@ -7,6 +7,7 @@
 
 {-# HLINT ignore "Use zipWith" #-}
 {-# HLINT ignore "Use infix" #-}
+{-# HLINT ignore "Use intercalate" #-}
 
 module ParserExample where
 
@@ -18,7 +19,7 @@ module ParserExample where
 import Control.Lens (makePrisms, _1, _2, _3)
 import Control.Monad.State
 import Data.Char (isAlphaNum)
-import Data.List (intercalate, isPrefixOf, stripPrefix)
+import Data.List (intersperse, isPrefixOf, stripPrefix)
 import Freer (FR)
 import qualified Freer as FR
 import GHC.Generics (Generic)
@@ -175,21 +176,21 @@ reflVar = Var <$> FR.focus _Var (FR.nonEmptyListOf FR.alphaNum)
 reflLang :: FR Lang Lang
 reflLang =
   Lang
-    <$> FR.focus (_Lang . _1) (FR.nonEmptyListOf reflMod)
-    <*> FR.focus (_Lang . _2) (FR.nonEmptyListOf reflFunc)
+    <$> FR.focus (_Lang . _1) (FR.listOf reflMod)
+    <*> FR.focus (_Lang . _2) (FR.listOf reflFunc)
 
 reflMod :: FR Mod Mod
 reflMod =
   Mod
-    <$> FR.focus (_Mod . _1) (FR.nonEmptyListOf reflVar)
-    <*> FR.focus (_Mod . _2) (FR.nonEmptyListOf reflVar)
+    <$> FR.focus (_Mod . _1) (FR.listOf reflVar)
+    <*> FR.focus (_Mod . _2) (FR.listOf reflVar)
 
 reflFunc :: FR Func Func
 reflFunc =
   Func
     <$> FR.focus (_Func . _1) reflVar
-    <*> FR.focus (_Func . _2) (FR.nonEmptyListOf reflExp)
-    <*> FR.focus (_Func . _3) (FR.nonEmptyListOf reflStmt)
+    <*> FR.focus (_Func . _2) (FR.listOf reflExp)
+    <*> FR.focus (_Func . _3) (FR.listOf reflStmt)
 
 reflStmt :: FR Stmt Stmt
 reflStmt =
@@ -208,7 +209,7 @@ reflExp = FR.sized go
        in FR.frequency
             [ (1, Bool <$> FR.tryFocus _Bool FR.bool),
               (1, Int <$> FR.tryFocus _Int FR.integer),
-              (i `div` 10, Not <$> FR.tryFocus _Not g),
+              (i `div` 10, Not <$> FR.tryFocus _Not (go (i - 1))),
               (i, And <$> FR.tryFocus (_And . _1) g <*> FR.tryFocus (_And . _2) g),
               (i, Or <$> FR.tryFocus (_Or . _1) g <*> FR.tryFocus (_Or . _2) g),
               (i, Add <$> FR.tryFocus (_Add . _1) g <*> FR.tryFocus (_Add . _2) g),
@@ -221,7 +222,7 @@ parens :: String -> String
 parens a = '(' : a ++ ")"
 
 showList :: Show' a => Char -> [a] -> String
-showList sep ls = parens $ intercalate [sep] $ map show' ls
+showList sep ls = parens $ concat $ intersperse [sep] $ map show' ls
 
 class Show a => Show' a where
   show' :: a -> String
@@ -476,12 +477,14 @@ counterExampleFR g p =
 average :: [Int] -> Double
 average xs = fromIntegral (sum xs) / fromIntegral (length xs)
 
-main :: IO ()
-main = do
-  measure $ counterExampleNone prop_Parse
-  measure $ counterExampleGeneric prop_Parse (\(Lang ms fs) -> not (null ms) && not (null fs))
-  measure $ counterExampleFR (FR.resize 5 reflLang) prop_Parse
+main :: Int -> IO (Double, Double, Double)
+main n = do
+  putStr "parser: "
+  x <- measure $ counterExampleNone prop_Parse
+  y <- measure $ counterExampleGeneric prop_Parse (const True)
+  z <- measure $ counterExampleFR reflLang prop_Parse
+  pure (x, y, z)
   where
     measure x = do
-      xs <- replicateM 100 x
-      print $ average (size <$> xs)
+      xs <- replicateM n x
+      pure $ average (size <$> xs)

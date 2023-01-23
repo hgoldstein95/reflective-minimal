@@ -16,12 +16,15 @@ module Freer where
 
 import BidirectionalProfunctors (Profmonad)
 import Bits
-  ( BitTree,
+  ( BitNode (..),
+    BitTree (BitTree),
     Bits (..),
     bit,
     bitsToInt,
+    bitsToInteger,
     draw,
     flatten,
+    integerToBits,
     listBits,
     swapBits,
     zeroDraws,
@@ -35,14 +38,16 @@ import Control.Monad.Logic (Logic, MonadLogic ((>>-)), observeAll)
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (chr, ord)
 import Data.Foldable (asum)
-import Data.List (group, nub, sort, transpose)
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.List (group, minimumBy, nub, sort, transpose)
+import Data.Maybe (fromMaybe, listToMaybe, maybeToList)
 import Data.Monoid (First)
+import Data.Ord (comparing)
 import Data.Profunctor (Profunctor (..))
 import Data.Void (Void)
+import Debug.Trace (traceShowId)
 import GHC.IO (catch, evaluate)
 import PartialProfunctors (PartialProfunctor (..))
-import Test.QuickCheck (Gen)
+import Test.QuickCheck (Args (maxSuccess), Gen, forAll, quickCheckWith, stdArgs)
 import qualified Test.QuickCheck as QC
 
 -- Core Definitions
@@ -57,6 +62,7 @@ type FR b a = Freer2 Refl b a
 
 data Refl b a where
   Pick :: [(Int, Maybe String, FR b a)] -> Refl b a
+  ChooseInteger :: (Integer, Integer) -> Refl Integer Integer
   Lmap :: (c -> d) -> Refl d a -> Refl c a
   InternaliseMaybe :: Refl b a -> Refl (Maybe b) a
   GetSize :: Refl b Int
@@ -116,6 +122,9 @@ exact x = comap (\y -> if y == x then Just y else Nothing) $ oneof [pure x]
 choose :: (Int, Int) -> FR Int Int
 choose (lo, hi) = labelled [(show i, exact i) | i <- [lo .. hi]]
 
+chooseInteger :: (Integer, Integer) -> FR Integer Integer
+chooseInteger p = Bind (ChooseInteger p) Return
+
 integer :: FR Int Int
 integer = sized $ \n -> labelled [(show i, exact i) | i <- concat (transpose [[0 .. n], reverse [-n .. -1]])]
 
@@ -127,6 +136,13 @@ alphaNum = labelled [(show c, exact c) | c <- ['a', 'b', 'c', '1', '2', '3']]
 
 bool :: FR Bool Bool
 bool = oneof [exact True, exact False]
+
+vectorOf :: Eq a => Int -> FR a a -> FR [a] [a]
+vectorOf 0 _ = exact []
+vectorOf n g = do
+  x <- tryFocus _head g
+  xs <- tryFocus _tail (vectorOf (n - 1) g)
+  exact (x : xs)
 
 listOf :: Eq a => FR a a -> FR [a] [a]
 listOf g = sized aux
@@ -212,6 +228,7 @@ gen = aux
   where
     aux' :: Refl b a -> Gen a
     aux' (Pick xs) = QC.frequency (map (\(w, _, x) -> (w, aux x)) xs)
+    aux' (ChooseInteger (lo, hi)) = QC.chooseInteger (lo, hi)
     aux' (Lmap _ x) = aux' x
     aux' (InternaliseMaybe x) = aux' x
     aux' GetSize = QC.getSize
@@ -228,6 +245,7 @@ weighted = aux
   where
     aux' :: Refl b a -> (String -> Int) -> Gen a
     aux' (Pick xs) w = QC.frequency (map (\(_, s, x) -> (maybe 1 w s, aux x w)) xs)
+    aux' (ChooseInteger (lo, hi)) _ = QC.chooseInteger (lo, hi)
     aux' (Lmap _ x) w = aux' x w
     aux' (InternaliseMaybe x) w = aux' x w
     aux' GetSize _ = QC.getSize
@@ -255,6 +273,7 @@ enum = observeAll . aux
   where
     aux' :: Refl b a -> Logic a
     aux' (Pick xs) = asum (map (aux . view _3) xs)
+    aux' (ChooseInteger (lo, hi)) = asum (map pure [lo .. hi])
     aux' (Lmap _ x) = aux' x
     aux' (InternaliseMaybe x) = aux' x
     aux' GetSize = error "enum: GetSize"
@@ -276,6 +295,7 @@ regen rg cs = listToMaybe (fst <$> aux rg (unBits cs) Nothing)
       guard (unBits bs == take numBits b)
       (y, bs') <- aux x (drop numBits b) s
       pure (y, bs')
+    aux' (ChooseInteger (lo, hi)) b _ = maybeToList $ bitsToInteger (lo, hi) b
     aux' (Lmap _ x) b s = aux' x b s
     aux' (InternaliseMaybe x) b s = aux' x b s
     aux' GetSize b Nothing = pure (30, b)
@@ -291,14 +311,21 @@ regen rg cs = listToMaybe (fst <$> aux rg (unBits cs) Nothing)
 parse :: FR b a -> [String] -> [(a, [String])]
 parse = aux
   where
+    search [] = []
+    search xs = (: []) . minimumBy (comparing (length . snd)) $ xs
+    -- search = take 1
+
     aux' :: Refl b a -> [String] -> [(a, [String])]
-    aux' (Pick xs) (s' : ss) = do
+    aux' (Pick xs) st = search $ do
       (_, ms, x) <- xs
       case ms of
-        Nothing -> aux x (s' : ss)
+        Nothing -> aux x st
         Just s -> do
-          guard (s == s')
-          aux x ss
+          case st of
+            s' : ss -> do
+              guard (s == s')
+              aux x ss
+            _ -> []
     aux' (Pick _) [] = []
     aux' (Lmap _ x) b = aux' x b
     aux' (InternaliseMaybe x) b = aux' x b
@@ -311,30 +338,6 @@ parse = aux
       (x, b') <- aux' mx b
       aux (f x) b'
 
-bits :: FR a a -> a -> [Bits]
-bits rg v = Bits . snd <$> aux rg v Nothing
-  where
-    aux' :: Refl b a -> b -> Maybe Int -> [(a, [Bool])]
-    aux' (Pick xs) b s = do
-      let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
-      (bs, (_, _, x)) <- zip (listBits numBits) xs
-      (y, bs') <- aux x b s
-      pure (y, unBits bs ++ bs')
-    aux' (Lmap f x) b s = aux' x (f b) s
-    aux' (InternaliseMaybe x) b s = case b of
-      Nothing -> []
-      Just a -> aux' x a s
-    aux' GetSize _ Nothing = pure (30, [])
-    aux' GetSize _ (Just n) = pure (n, [])
-    aux' (Resize n x) b _ = aux' x b (Just n)
-
-    aux :: FR b a -> b -> Maybe Int -> [(a, [Bool])]
-    aux (Return x) _ _ = pure (x, [])
-    aux (Bind mx f) b s = do
-      (x, cs) <- aux' mx b s
-      (y, cs') <- aux (f x) b s
-      pure (y, cs ++ cs')
-
 choices :: FR a a -> a -> [BitTree]
 choices rg v = snd <$> aux rg v Nothing
   where
@@ -344,6 +347,7 @@ choices rg v = snd <$> aux rg v Nothing
       (bs, (_, _, x)) <- zip (listBits numBits) xs
       (y, bs') <- aux x b s
       pure (y, foldr ((+++) . bit) BitTree.empty (unBits bs) +++ bs')
+    aux' (ChooseInteger (lo, hi)) b _ = [(b, BitTree . map Bit $ integerToBits (lo, hi) b)]
     aux' (Lmap f x) b s = aux' x (f b) s
     aux' (InternaliseMaybe x) b s = case b of
       Nothing -> []
@@ -363,7 +367,7 @@ unparse :: FR a a -> a -> [[String]]
 unparse rg v = snd <$> aux rg v
   where
     aux' :: Refl b a -> b -> [(a, [String])]
-    aux' (Pick xs) b = do
+    aux' (Pick xs) b = take 1 $ do
       (_, ms, x) <- xs
       case ms of
         Nothing -> aux x b
@@ -549,22 +553,30 @@ shrink p g =
       let ts' = take 1 . filter (any p . regen g . flatten) . sort . concatMap s $ ts
        in if null ts' || ts' == ts then ts else applyShrinker s ts'
 
+validate :: (Eq a, Show a) => FR a a -> IO ()
+validate g =
+  quickCheckWith
+    (stdArgs {maxSuccess = 10000})
+    (forAll (gen g) $ \x -> all ((== Just x) . regen g . flatten) (choices g x))
+
+validateParse :: (Eq a, Show a) => FR a a -> IO ()
+validateParse g =
+  quickCheckWith
+    (stdArgs {maxSuccess = 10000})
+    (forAll (gen g) $ \x -> all ((== x) . fst . head . filter (null . snd) . parse g) (unparse g x))
+
 main :: IO ()
 main = do
-  print (nub $ bits weirdTree (Node Leaf 1 (Node Leaf 2 Leaf)))
   print =<< QC.generate (gen weirdTree)
   print =<< QC.generate (gen bstFwd)
-  let cs = head . nub $ bits bst (Node Leaf 1 (Node Leaf 2 Leaf))
-  print cs
-  print (regen bst cs)
   let ss = head . nub $ unparse bst (Node Leaf 1 (Node Leaf 2 Leaf))
   print ss
   print (parse bst ss)
   let n l = Node l 0
-  print $ bits hypoTree (n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
-  print $ bits hypoTree (n Leaf (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
-  print $ bits hypoTree (n Leaf (n (n Leaf Leaf) Leaf))
-  print $ bits hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
+  print $ (map flatten . choices hypoTree) (n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
+  print $ (map flatten . choices hypoTree) (n Leaf (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
+  print $ (map flatten . choices hypoTree) (n Leaf (n (n Leaf Leaf) Leaf))
+  print $ (map flatten . choices hypoTree) (n Leaf (n Leaf (n Leaf Leaf)))
   print $ choices hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
   print $ choices bst (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
   print $ map fst $ filter (null . snd) $ parse expression (words "( 1 + 2 ) * ( 3 + 3 * 4 )")

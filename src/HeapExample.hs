@@ -214,12 +214,14 @@ counterExampleFR g p =
 average :: [Int] -> Double
 average xs = fromIntegral (sum xs) / fromIntegral (length xs)
 
-main :: IO ()
-main = do
-  measure $ counterExampleNone prop_ToSortedList
-  measure $ counterExampleGeneric prop_ToSortedList invariant
-  measure $ counterExampleFR reflHeap prop_ToSortedList
+main :: Int -> IO (Double, Double, Double)
+main n = do
+  putStr "heap: "
+  x <- measure $ counterExampleNone prop_ToSortedList
+  y <- measure $ counterExampleGeneric prop_ToSortedList invariant
+  z <- measure $ counterExampleFR reflHeap prop_ToSortedList
+  pure (x, y, z)
   where
     measure x = do
-      xs <- replicateM 100 x
-      print $ average (size <$> xs)
+      xs <- replicateM n x
+      pure $ average (size <$> xs)

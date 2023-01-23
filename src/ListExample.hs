@@ -44,12 +44,14 @@ counterExampleFR g p =
 average :: [Int] -> Double
 average xs = fromIntegral (sum xs) / fromIntegral (length xs)
 
-main :: IO ()
-main = do
-  measure $ counterExampleNone prop_Reverse
-  measure $ counterExampleGeneric prop_Reverse (const True)
-  measure $ counterExampleFR (FR.listOf FR.integer) prop_Reverse
+main :: Int -> IO (Double, Double, Double)
+main n = do
+  putStr "list: "
+  x <- measure $ counterExampleNone prop_Reverse
+  y <- measure $ counterExampleGeneric prop_Reverse (const True)
+  z <- measure $ counterExampleFR (FR.listOf FR.integer) prop_Reverse
+  pure (x, y, z)
   where
     measure x = do
-      xs <- replicateM 100 x
-      print $ average (length <$> xs)
+      xs <- replicateM n x
+      pure $ average (length <$> xs)
