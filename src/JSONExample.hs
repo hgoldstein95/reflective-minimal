@@ -5,7 +5,6 @@ module JSONExample where
 
 import Control.Lens (makePrisms, _1, _2, _3, _head, _tail)
 import Data.Char
-import Data.List (intercalate)
 import Data.Profunctor (lmap)
 import Freer
 import Text.Printf (printf)
@@ -16,27 +15,14 @@ data JSON = Object [(String, JSON)] | Array [JSON] | String String | Number Numb
 data Number = Int String | IntFrac String String | IntExp String String | IntFracExp String String String
   deriving (Eq, Ord, Show, Read)
 
-printJSON :: JSON -> String
-printJSON (Object xs) = "{" ++ printPairs xs ++ "}"
-printJSON (Array xs) = "[" ++ intercalate "," (map printJSON xs) ++ "]"
-printJSON (String s) = "\"" ++ s ++ "\""
-printJSON (Number n) = printNumber n
-printJSON (Bool b) = if b then "true" else "false"
-printJSON Null = "null"
-
-printPairs :: [(String, JSON)] -> String
-printPairs [] = ""
-printPairs [(k, v)] = "\"" ++ k ++ "\"" ++ ":" ++ printJSON v
-printPairs ((k, v) : xs) = "\"" ++ k ++ "\"" ++ ":" ++ printJSON v ++ "," ++ printPairs xs
-
-printNumber :: Number -> String
-printNumber (Int s) = s
-printNumber (IntFrac s1 s2) = s1 ++ "." ++ s2
-printNumber (IntExp s1 s2) = s1 ++ "e" ++ s2
-printNumber (IntFracExp s1 s2 s3) = s1 ++ "." ++ s2 ++ "e" ++ s3
-
 makePrisms ''JSON
 makePrisms ''Number
+
+printJSON :: JSON -> String
+printJSON = concat . head . unparse start
+
+parseJSON :: String -> JSON
+parseJSON = fst . head . parse start . map (: [])
 
 token :: Char -> FR b ()
 token s = labelled [([s], pure ())]
@@ -122,9 +108,9 @@ char_ = oneof [digit, unescapedspecial, letter, escapedspecial]
 letter :: FR Char Char
 letter = oneof (map (\c -> token c *> exact c) ['y', 'c', 'K', 'T', 's', 'N', 'b', 'S', 'R', 'Y', 'C', 'B', 'h', 'J', 'u', 'Q', 'd', 'k', 't', 'V', 'a', 'x', 'G', 'v', 'D', 'm', 'F', 'w', 'i', 'n', 'L', 'p', 'q', 'W', 'A', 'X', 'I', 'O', 'l', 'P', 'H', 'e', 'f', 'o', 'j', 'Z', 'g', 'E', 'r', 'M', 'z', 'U'])
 
--- unescapedspecial = "/" | "+" | ":" | "@" | "$" | "!" | "'" | "(" | "," | "." | ")" | "-" | "#" | "_" ;
+-- unescapedspecial = "/" | "+" | ":" | "@" | "$" | "!" | "'" | "(" | "," | "." | ")" | "-" | "#" | "_" | ... "%" | "=" | ">" | "<" | "{" | "}" | "^" | "*" | "|" | ";" | " " ; -- NOTE: I had to add some things
 unescapedspecial :: FR Char Char
-unescapedspecial = oneof (map (\c -> token c *> exact c) ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_'])
+unescapedspecial = oneof (map (\c -> token c *> exact c) ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_', '%', '=', '>', '<', '{', '}', '^', '*', '|', ';', ' '])
 
 -- escapedspecial = "\\b" | "\\n" | "\\r" | "\\/" | "\\u" hextwobyte | "\\\\" | "\\t" | "\\\"" | "\\f" ;
 escapedspecial :: FR Char Char

@@ -9,9 +9,10 @@ module HeapExample where
 --------------------------------------------------------------------------
 -- imports
 
-import Control.Lens (makePrisms, _1, _2, _3)
+import Control.Lens (makePrisms, _2, _3, _Just)
 import Control.Monad (replicateM)
 import Data.List (sort, (\\))
+import Data.Profunctor (lmap)
 import Freer (FR)
 import qualified Freer as FR
 import GHC.Generics (Generic)
@@ -52,7 +53,7 @@ unit :: a -> Heap a
 unit x = Node x empty empty
 
 size :: Heap a -> Int
-size Empty = 0
+size Empty = 1
 size (Node _ h1 h2) = 1 + size h1 + size h2
 
 insert :: Ord a => a -> Heap a -> Heap a
@@ -164,7 +165,16 @@ reflHeap = FR.sized (arbHeap Nothing)
         (1, FR.exact Empty)
           : [ ( 7,
                 do
-                  my <- FR.tryFocus (_Node . _1) (FR.integer `FR.suchThatMaybe` ((>= mx) . Just))
+                  my <-
+                    lmap
+                      (\case Empty -> Nothing; Node x _ _ -> Just x)
+                      ( case mx of
+                          Nothing -> Just <$> FR.tryFocus _Just FR.integer
+                          Just hi -> FR.sized $ \i ->
+                            if hi > i
+                              then FR.exact Nothing
+                              else Just <$> FR.tryFocus _Just (FR.choose (hi, i))
+                      )
                   case my of
                     Nothing -> FR.exact Empty
                     Just y -> Node y <$> FR.tryFocus (_Node . _2) arbHeap2 <*> FR.tryFocus (_Node . _3) arbHeap2

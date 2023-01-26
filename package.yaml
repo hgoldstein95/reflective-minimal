@@ -55,6 +55,16 @@ executables:
     dependencies:
     - reflective-minimal
 
+  json-exe:
+    main:                Main.hs
+    source-dirs:         json-app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - reflective-minimal
+
 tests:
   reflective-minimal-test:
     main:                Spec.hs

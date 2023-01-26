@@ -39,6 +39,7 @@ library
       ParserExample
       PartialProfunctors
       Reflective
+      STLCExample
       UnGenFChoices
       UnGenList
       UniformGen
@@ -55,6 +56,25 @@ library
     , logict
     , mtl
     , profunctors
+    , template-haskell
+  default-language: Haskell2010
+
+executable json-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_reflective_minimal
+  hs-source-dirs:
+      json-app
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-missing-export-lists -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      QuickCheck
+    , base >=4.7 && <5
+    , data-default
+    , lens
+    , logict
+    , mtl
+    , profunctors
+    , reflective-minimal
     , template-haskell
   default-language: Haskell2010
 

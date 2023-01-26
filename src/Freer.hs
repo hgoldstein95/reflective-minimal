@@ -39,14 +39,14 @@ import Data.Bifunctor (Bifunctor (second))
 import Data.Char (chr, ord)
 import Data.Foldable (asum)
 import Data.List (group, minimumBy, nub, sort, transpose)
-import Data.Maybe (fromMaybe, listToMaybe, maybeToList)
+import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe, maybeToList)
 import Data.Monoid (First)
 import Data.Ord (comparing)
 import Data.Profunctor (Profunctor (..))
 import Data.Void (Void)
 import GHC.IO (catch, evaluate)
 import PartialProfunctors (PartialProfunctor (..))
-import Test.QuickCheck (Args (maxSuccess), Gen, forAll, quickCheckWith, stdArgs)
+import Test.QuickCheck (Args (maxSize, maxSuccess), Gen, forAll, quickCheckWith, stdArgs)
 import qualified Test.QuickCheck as QC
 
 -- Core Definitions
@@ -63,9 +63,11 @@ data Refl b a where
   Pick :: [(Int, Maybe String, FR b a)] -> Refl b a
   ChooseInteger :: (Integer, Integer) -> Refl Integer Integer
   Lmap :: (c -> d) -> Refl d a -> Refl c a
-  InternaliseMaybe :: Refl b a -> Refl (Maybe b) a
+  Prune :: Refl b a -> Refl (Maybe b) a
   GetSize :: Refl b Int
   Resize :: Int -> Refl b a -> Refl b a
+
+type Reflective a = FR a a
 
 -- Typeclass Instances Combinators
 
@@ -90,10 +92,13 @@ instance Profmonad (Freer2 Refl)
 
 instance PartialProfunctor (Freer2 Refl) where
   internaliseMaybe (Return a) = Return a
-  internaliseMaybe (Bind x f) = Bind (InternaliseMaybe x) (internaliseMaybe . f)
+  internaliseMaybe (Bind x f) = Bind (Prune x) (internaliseMaybe . f)
 
-comap :: (u -> Maybe u') -> FR u' v -> FR u v
-comap f = dimap f id . internaliseMaybe
+prune :: FR b a -> FR (Maybe b) a
+prune = internaliseMaybe
+
+comap :: (a -> Maybe b) -> FR b v -> FR a v
+comap f = lmap f . prune
 
 getbits :: Int -> FR b Int
 getbits w =
@@ -192,21 +197,21 @@ resize w (Bind x f) = Bind (Resize w x) (resize w . f)
 sized :: (Int -> FR b a) -> FR b a
 sized = Bind GetSize
 
-suchThat :: FR a a -> (a -> Bool) -> FR a a
-g `suchThat` p = comap (\x -> if p x then Just x else Nothing) aux
-  where
-    aux = do
-      x <- g
-      if p x then return x else aux
+-- suchThat :: FR a a -> (a -> Bool) -> FR a a
+-- g `suchThat` p = comap (\x -> if p x then Just x else Nothing) aux
+--   where
+--     aux = do
+--       x <- g
+--       if p x then return x else aux
 
-suchThatMaybe :: FR a a -> (a -> Bool) -> FR a (Maybe a)
-g `suchThatMaybe` p = comap (\x -> if p x then Just x else Nothing) (sized (\n -> try n (2 * n)))
-  where
-    try m n
-      | m > n = return Nothing
-      | otherwise = do
-          x <- resize m g
-          if p x then return (Just x) else try (m + 1) n
+-- suchThatMaybe :: Eq a => FR a a -> (a -> Bool) -> FR (Maybe a) (Maybe a)
+-- g `suchThatMaybe` p = sized (\n -> try n (2 * n))
+--   where
+--     try m n
+--       | m > n = exact Nothing
+--       | otherwise = do
+--           x <- comap _ (resize m g)
+--           if p x then exact (Just x) else try (m + 1) n
 
 -- -- Interpretations
 -- derivative :: FR b a -> String -> Maybe (FR b a)
@@ -220,40 +225,56 @@ g `suchThatMaybe` p = comap (\x -> if p x then Just x else Nothing) (sized (\n -
 --       (_, _, x) <- find ((== Just s) . view _2) xs
 --       pure x
 --     drefl (Lmap g x) = lmap g <$> drefl x
---     drefl (InternaliseMaybe x) = internaliseMaybe <$> drefl x
+--     drefl (Prune x) = internaliseMaybe <$> drefl x
 
 gen :: FR b a -> Gen a
-gen = aux
+gen = interp
   where
-    aux' :: Refl b a -> Gen a
-    aux' (Pick xs) = QC.frequency (map (\(w, _, x) -> (w, aux x)) xs)
-    aux' (ChooseInteger (lo, hi)) = QC.chooseInteger (lo, hi)
-    aux' (Lmap _ x) = aux' x
-    aux' (InternaliseMaybe x) = aux' x
-    aux' GetSize = QC.getSize
-    aux' (Resize n x) = QC.resize n (aux' x)
+    interpR :: Refl b a -> Gen a
+    interpR (Pick xs) = QC.frequency [(w, interp x) | (w, _, x) <- xs]
+    interpR (Lmap _ x) = interpR x
+    interpR (Prune x) = interpR x
+    interpR (ChooseInteger (lo, hi)) = QC.chooseInteger (lo, hi)
+    interpR GetSize = QC.getSize
+    interpR (Resize n x) = QC.resize n (interpR x)
 
-    aux :: FR b a -> Gen a
-    aux (Return x) = pure x
-    aux (Bind x f) = do
-      y <- aux' x
-      aux (f y)
+    interp :: FR b a -> Gen a
+    interp (Return x) = pure x
+    interp (Bind x f) = interpR x >>= interp . f
+
+check :: FR a a -> a -> Bool
+check g v = isJust (interp g v Nothing)
+  where
+    interp :: FR b a -> b -> Maybe Int -> Maybe a
+    interp (Return x) _ _ = return x
+    interp (Bind x f) b s = interpR x b s >>= \y -> interp (f y) b s
+
+    interpR :: Refl b a -> b -> Maybe Int -> Maybe a
+    interpR (Pick xs) b s = listToMaybe (catMaybes [interp x b s | (_, _, x) <- xs])
+    interpR (Lmap f x) b s = interpR x (f b) s
+    interpR (Prune x) b s = b >>= \b' -> interpR x b' s
+    interpR (ChooseInteger (lo, hi)) b _
+      | lo <= b && b <= hi = pure b
+      | otherwise = Nothing
+    interpR GetSize _ (Just s) = return s
+    interpR GetSize _ Nothing = pure 30
+    interpR (Resize s x) b _ = interpR x b (Just s)
 
 weighted :: FR b a -> (String -> Int) -> Gen a
 weighted = aux
   where
-    aux' :: Refl b a -> (String -> Int) -> Gen a
-    aux' (Pick xs) w = QC.frequency (map (\(_, s, x) -> (maybe 1 w s, aux x w)) xs)
-    aux' (ChooseInteger (lo, hi)) _ = QC.chooseInteger (lo, hi)
-    aux' (Lmap _ x) w = aux' x w
-    aux' (InternaliseMaybe x) w = aux' x w
-    aux' GetSize _ = QC.getSize
-    aux' (Resize n x) w = QC.resize n (aux' x w)
+    interpR :: Refl b a -> (String -> Int) -> Gen a
+    interpR (Pick xs) w = QC.frequency (map (\(_, s, x) -> (maybe 1 w s, aux x w)) xs)
+    interpR (ChooseInteger (lo, hi)) _ = QC.chooseInteger (lo, hi)
+    interpR (Lmap _ x) w = interpR x w
+    interpR (Prune x) w = interpR x w
+    interpR GetSize _ = QC.getSize
+    interpR (Resize n x) w = QC.resize n (interpR x w)
 
     aux :: FR b a -> (String -> Int) -> Gen a
     aux (Return x) _ = pure x
     aux (Bind x f) w = do
-      y <- aux' x w
+      y <- interpR x w
       aux (f y) w
 
 weights :: FR a a -> [a] -> [(String, Int)]
@@ -270,41 +291,41 @@ byExample g xs = weighted g (\s -> fromMaybe 0 (lookup s (weights g xs)))
 enum :: FR b a -> [a]
 enum = observeAll . aux
   where
-    aux' :: Refl b a -> Logic a
-    aux' (Pick xs) = asum (map (aux . view _3) xs)
-    aux' (ChooseInteger (lo, hi)) = asum (map pure [lo .. hi])
-    aux' (Lmap _ x) = aux' x
-    aux' (InternaliseMaybe x) = aux' x
-    aux' GetSize = error "enum: GetSize"
-    aux' (Resize {}) = error "enum: Resize"
+    interpR :: Refl b a -> Logic a
+    interpR (Pick xs) = asum (map (aux . view _3) xs)
+    interpR (ChooseInteger (lo, hi)) = asum (map pure [lo .. hi])
+    interpR (Lmap _ x) = interpR x
+    interpR (Prune x) = interpR x
+    interpR GetSize = error "enum: GetSize"
+    interpR (Resize {}) = error "enum: Resize"
 
     aux :: FR b a -> Logic a
     aux (Return x) = pure x
     aux (Bind x f) =
-      aux' x >>- \y ->
+      interpR x >>- \y ->
         aux (f y)
 
 regen :: FR b a -> Bits -> Maybe a
 regen rg cs = listToMaybe (fst <$> aux rg (unBits cs) Nothing)
   where
-    aux' :: Refl b a -> [Bool] -> Maybe Int -> [(a, [Bool])]
-    aux' (Pick xs) b s = do
+    interpR :: Refl b a -> [Bool] -> Maybe Int -> [(a, [Bool])]
+    interpR (Pick xs) b s = do
       let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
       (bs, (_, _, x)) <- zip (listBits numBits) xs
       guard (unBits bs == take numBits b)
       (y, bs') <- aux x (drop numBits b) s
       pure (y, bs')
-    aux' (ChooseInteger (lo, hi)) b _ = maybeToList $ bitsToInteger (lo, hi) b
-    aux' (Lmap _ x) b s = aux' x b s
-    aux' (InternaliseMaybe x) b s = aux' x b s
-    aux' GetSize b Nothing = pure (30, b)
-    aux' GetSize b (Just n) = pure (n, b)
-    aux' (Resize n x) b _ = aux' x b (Just n)
+    interpR (ChooseInteger (lo, hi)) b _ = maybeToList $ bitsToInteger (lo, hi) b
+    interpR (Lmap _ x) b s = interpR x b s
+    interpR (Prune x) b s = interpR x b s
+    interpR GetSize b Nothing = pure (30, b)
+    interpR GetSize b (Just n) = pure (n, b)
+    interpR (Resize n x) b _ = interpR x b (Just n)
 
     aux :: FR b a -> [Bool] -> Maybe Int -> [(a, [Bool])]
     aux (Return x) b _ = pure (x, b)
     aux (Bind mx f) b s = do
-      (x, b') <- aux' mx b s
+      (x, b') <- interpR mx b s
       aux (f x) b' s
 
 parse :: FR b a -> [String] -> [(a, [String])]
@@ -314,8 +335,8 @@ parse g v = aux g v Nothing
     search xs = (: []) . minimumBy (comparing (length . snd)) $ xs
     -- search = take 1
 
-    aux' :: Refl b a -> [String] -> Maybe Int -> [(a, [String])]
-    aux' (Pick xs) st sz = search $ do
+    interpR :: Refl b a -> [String] -> Maybe Int -> [(a, [String])]
+    interpR (Pick xs) st sz = search $ do
       (_, ms, x) <- xs
       case ms of
         Nothing -> aux x st sz
@@ -325,65 +346,66 @@ parse g v = aux g v Nothing
               guard (s == s')
               aux x ss sz
             _ -> []
-    aux' (ChooseInteger (lo, hi)) s _ = (,s) <$> [lo .. hi]
-    aux' (Lmap _ x) b sz = aux' x b sz
-    aux' (InternaliseMaybe x) b sz = aux' x b sz
-    aux' GetSize b (Just sz) = pure (sz, b)
-    aux' GetSize b _ = pure (30, b)
-    aux' (Resize sz x) b _ = aux' x b (Just sz)
+    interpR (ChooseInteger (lo, hi)) s _ = (,s) <$> [lo .. hi]
+    interpR (Lmap _ x) b sz = interpR x b sz
+    interpR (Prune x) b sz = interpR x b sz
+    interpR GetSize b (Just sz) = pure (sz, b)
+    interpR GetSize b _ = pure (30, b)
+    interpR (Resize sz x) b _ = interpR x b (Just sz)
 
     aux :: FR b a -> [String] -> Maybe Int -> [(a, [String])]
     aux (Return x) b _ = pure (x, b)
     aux (Bind mx f) b s = do
-      (x, b') <- aux' mx b s
+      (x, b') <- interpR mx b s
       aux (f x) b' s
 
 choices :: FR a a -> a -> [BitTree]
 choices rg v = snd <$> aux rg v Nothing
   where
-    aux' :: Refl b a -> b -> Maybe Int -> [(a, BitTree)]
-    aux' (Pick xs) b s = do
+    interpR :: Refl b a -> b -> Maybe Int -> [(a, BitTree)]
+    interpR (Pick xs) b s = do
       let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
       (bs, (_, _, x)) <- zip (listBits numBits) xs
       (y, bs') <- aux x b s
       pure (y, foldr ((+++) . bit) BitTree.empty (unBits bs) +++ bs')
-    aux' (ChooseInteger (lo, hi)) b _ = [(b, BitTree . map Bit $ integerToBits (lo, hi) b)]
-    aux' (Lmap f x) b s = aux' x (f b) s
-    aux' (InternaliseMaybe x) b s = case b of
+    interpR (ChooseInteger (lo, hi)) b _ =
+      [(b, BitTree . map Bit $ integerToBits (lo, hi) b) | not (b < lo || b > hi)]
+    interpR (Lmap f x) b s = interpR x (f b) s
+    interpR (Prune x) b s = case b of
       Nothing -> []
-      Just a -> aux' x a s
-    aux' GetSize _ Nothing = pure (30, BitTree.empty)
-    aux' GetSize _ (Just n) = pure (n, BitTree.empty)
-    aux' (Resize n x) b _ = aux' x b (Just n)
+      Just a -> interpR x a s
+    interpR GetSize _ Nothing = pure (30, BitTree.empty)
+    interpR GetSize _ (Just n) = pure (n, BitTree.empty)
+    interpR (Resize n x) b _ = interpR x b (Just n)
 
     aux :: FR b a -> b -> Maybe Int -> [(a, BitTree)]
     aux (Return x) _ _ = pure (x, BitTree.empty)
     aux (Bind mx f) b s = do
-      (x, cs) <- aux' mx b s
+      (x, cs) <- interpR mx b s
       (y, cs') <- aux (f x) b s
       pure (y, draw cs +++ cs')
 
 unparse :: FR a a -> a -> [[String]]
 unparse rg v = snd <$> aux rg v
   where
-    aux' :: Refl b a -> b -> [(a, [String])]
-    aux' (Pick xs) b = take 1 $ do
+    interpR :: Refl b a -> b -> [(a, [String])]
+    interpR (Pick xs) b = take 1 $ do
       (_, ms, x) <- xs
       case ms of
         Nothing -> aux x b
         Just s -> second (s :) <$> aux x b
-    aux' (ChooseInteger _) b = pure (b, [])
-    aux' (Lmap f x) b = aux' x (f b)
-    aux' (InternaliseMaybe x) b = case b of
+    interpR (ChooseInteger _) b = pure (b, [])
+    interpR (Lmap f x) b = interpR x (f b)
+    interpR (Prune x) b = case b of
       Nothing -> []
-      Just a -> aux' x a
-    aux' GetSize _ = error "unparse: GetSize"
-    aux' (Resize {}) _ = error "unparse: Resize"
+      Just a -> interpR x a
+    interpR GetSize _ = error "unparse: GetSize"
+    interpR (Resize {}) _ = error "unparse: Resize"
 
     aux :: FR b a -> b -> [(a, [String])]
     aux (Return x) _ = pure (x, [])
     aux (Bind mx f) b = do
-      (x, cs) <- aux' mx b
+      (x, cs) <- interpR mx b
       (y, cs') <- aux (f x) b
       pure (y, cs ++ cs')
 
@@ -393,23 +415,23 @@ complete g v = do
     [] -> pure Nothing
     xs -> Just <$> QC.generate (QC.elements xs)
   where
-    aux' :: Refl b a -> b -> IO [a]
-    aux' (Pick xs) b = concat <$> mapM (\(_, _, x) -> aux x b) xs
-    aux' (ChooseInteger (lo, hi)) _ = pure [lo .. hi] -- TODO: Check on this
-    aux' (Lmap f x) b = do
+    interpR :: Refl b a -> b -> IO [a]
+    interpR (Pick xs) b = concat <$> mapM (\(_, _, x) -> aux x b) xs
+    interpR (ChooseInteger (lo, hi)) _ = pure [lo .. hi] -- TODO: Check on this
+    interpR (Lmap f x) b = do
       catch
-        (evaluate (f b) >>= \a -> aux' x a)
+        (evaluate (f b) >>= \a -> interpR x a)
         (\(_ :: SomeException) -> (: []) <$> QC.generate (gen (Bind x Return)))
-    aux' (InternaliseMaybe x) b = case b of
+    interpR (Prune x) b = case b of
       Nothing -> pure []
-      Just a -> aux' x a
-    aux' GetSize _ = error "complete: GetSize"
-    aux' (Resize {}) _ = error "complete: Resize"
+      Just a -> interpR x a
+    interpR GetSize _ = error "complete: GetSize"
+    interpR (Resize {}) _ = error "complete: Resize"
 
     aux :: FR b a -> b -> IO [a]
     aux (Return x) _ = pure [x]
     aux (Bind mx f) b = do
-      xs <- aux' mx b
+      xs <- interpR mx b
       concat <$> mapM (\x -> aux (f x) b) xs
 
 -- Examples
@@ -471,7 +493,7 @@ bstFwd = aux (1, 10)
                 return (Node l x r)
             ]
 
-bst :: FR Tree Tree
+bst :: Reflective Tree
 bst = aux (1, 10)
   where
     aux (lo, hi)
@@ -555,10 +577,16 @@ shrink p g =
       let ts' = take 1 . filter (any p . regen g . flatten) . sort . concatMap s $ ts
        in if null ts' || ts' == ts then ts else applyShrinker s ts'
 
-validate :: (Eq a, Show a) => FR a a -> IO ()
+validate :: Show a => FR a a -> IO ()
 validate g =
   quickCheckWith
-    (stdArgs {maxSuccess = 10000})
+    (stdArgs {maxSuccess = 1000, maxSize = 30})
+    (forAll (gen g) (check g))
+
+validateChoice :: (Eq a, Show a) => FR a a -> IO ()
+validateChoice g =
+  quickCheckWith
+    (stdArgs {maxSuccess = 1000})
     (forAll (gen g) $ \x -> all ((== Just x) . regen g . flatten) (choices g x))
 
 validateParse :: (Eq a, Show a) => FR a a -> IO ()
