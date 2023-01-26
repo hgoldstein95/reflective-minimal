@@ -18,118 +18,155 @@ data Number = Int String | IntFrac String String | IntExp String String | IntFra
 makePrisms ''JSON
 makePrisms ''Number
 
-printJSON :: JSON -> String
-printJSON = concat . head . unparse start
-
-parseJSON :: String -> JSON
-parseJSON = fst . head . parse start . map (: [])
-
 token :: Char -> FR b ()
-token s = labelled [([s], pure ())]
+token s = labelled [(['\'', s, '\''], pure ())]
+
+label :: String -> FR b ()
+label s = labelled [(s, pure ())]
 
 -- start = array | object ;
-start :: FR JSON JSON
+start :: FR String String
 start =
-  oneof
-    [ Array <$> tryFocus _Array array,
-      Object <$> tryFocus _Object object
+  labelled
+    [ ("array", array),
+      ("object", object)
     ]
 
 -- object = "{" "}" | "{" members "}" ;
-object :: FR [(String, JSON)] [(String, JSON)]
+object :: FR String String
 object =
-  oneof
-    [ token '{' *> members <* token '}',
-      token '{' >> token '}' >> exact []
+  labelled
+    [ ( "'{' members '}'",
+        do
+          b1 <- lmap (take 1) (exact "{")
+          ms <- lmap (drop 1) members
+          b2 <- lmap (take 1 . drop (1 + length ms)) (exact "}")
+          pure (b1 ++ ms ++ b2)
+      ),
+      ("'{' '}'", lmap (take 2) (exact "{}"))
     ]
 
 -- members = pair | pair ',' members ;
-members :: FR [(String, JSON)] [(String, JSON)]
+members :: FR String String
 members =
-  oneof
-    [ (: []) <$> comap (\case [x] -> Just x; _ -> Nothing) pair,
-      (:) <$> tryFocus _head pair <*> (token ',' *> tryFocus _tail members)
+  labelled
+    [ ("pair", pair),
+      ( "pair ',' members",
+        do
+          p <- pair
+          c <- lmap (take 1 . drop (length p)) (exact ",")
+          ps <- lmap (drop (length p + 1)) members
+          pure (p ++ c ++ ps)
+      )
     ]
 
 -- pair = string ':' value ;
-pair :: FR (String, JSON) (String, JSON)
-pair = (,) <$> lmap fst string <*> (token ':' *> lmap snd value)
+pair :: FR String String
+pair = do
+  s <- string
+  c <- lmap (take 1 . drop (length s)) (exact ":")
+  v <- lmap (drop (length s + 1)) value
+  pure (s ++ c ++ v)
 
 -- array = "[" elements "]" | "[" "]" ;
-array :: FR [JSON] [JSON]
+array :: FR String String
 array =
-  oneof
-    [ token '[' >> token ']' >> exact [],
-      token '[' *> elements <* token ']'
+  labelled
+    [ ( "'[' elements ']'",
+        do
+          b1 <- lmap (take 1) (exact "[")
+          ms <- lmap (drop 1) elements
+          b2 <- lmap (take 1 . drop (1 + length ms)) (exact "]")
+          pure (b1 ++ ms ++ b2)
+      ),
+      ("'[' ']'", lmap (take 2) (exact "[]"))
     ]
 
 -- elements = value ',' elements | value ;
-elements :: FR [JSON] [JSON]
+elements :: FR String String
 elements =
-  oneof
-    [ (:) <$> tryFocus _head value <*> (token ',' *> tryFocus _tail elements),
-      (: []) <$> comap (\case [x] -> Just x; _ -> Nothing) value
+  labelled
+    [ ("value", value),
+      ( "value ',' elements",
+        do
+          el <- value
+          c <- lmap (take 1 . drop (length el)) (exact ",")
+          es <- lmap (drop (length el + 1)) elements
+          pure (el ++ c ++ es)
+      )
     ]
 
 -- value = "f" "a" "l" "s" "e" | string | array | "t" "r" "u" "e" | number | object | "n" "u" "l" "l" ;
-value :: FR JSON JSON
+value :: FR String String
 value =
-  oneof
-    [ token 'f' >> token 'a' >> token 'l' >> token 's' >> token 'e' >> exact (Bool False),
-      String <$> tryFocus _String string,
-      Array <$> tryFocus _Array array,
-      token 't' >> token 'r' >> token 'u' >> token 'e' >> exact (Bool True),
-      Number <$> tryFocus _Number number,
-      Object <$> tryFocus _Object object,
-      token 'n' >> token 'u' >> token 'l' >> token 'l' >> exact Null
+  labelled
+    [ ("false", lmap (take 5) (exact "false")),
+      ("string", string),
+      ("array", array),
+      ("number", number),
+      ("true", lmap (take 4) (exact "true")),
+      ("object", object),
+      ("null", lmap (take 4) (exact "null"))
     ]
 
 -- string = "\"" "\"" | "\"" chars "\"" ;
 string :: FR String String
 string =
-  oneof
-    [ token '"' >> token '"' >> exact "",
-      token '"' *> chars <* token '"'
+  labelled
+    [ ("'\"' '\"'", lmap (take 2) exact "\"\""),
+      ( "'\"' chars '\"'",
+        do
+          q1 <- lmap (take 1) (exact ['"'])
+          cs <- lmap (drop 1) chars
+          q2 <- lmap (take 1 . drop (1 + length cs)) (exact ['"'])
+          pure (q1 ++ cs ++ q2)
+      )
     ]
 
 -- chars = char_ chars | char_ ;
 chars :: FR String String
 chars =
-  oneof
-    [ (:) <$> tryFocus _head char_ <*> tryFocus _tail chars,
-      (: []) <$> comap (\case [x] -> Just x; _ -> Nothing) char_
+  labelled
+    [ ("char_ chars", (:) <$> tryFocus _head char_ <*> tryFocus _tail chars),
+      ("char_", (: []) <$> tryFocus _head char_)
     ]
 
 -- char_ = digit | unescapedspecial | letter | escapedspecial ;
 char_ :: FR Char Char
-char_ = oneof [digit, unescapedspecial, letter, escapedspecial]
+char_ =
+  labelled
+    [ ("digit", digit),
+      ("unescapedspecial", unescapedspecial),
+      ("letter", letter)
+      -- ("escapedspecial", escapedspecial) -- FIXME: I don't know how to fix this.
+    ]
 
 -- letter = "y" | "c" | "K" | "T" | "s" | "N" | "b" | "S" | "R" | "Y" | "C" | "B" | "h" | "J" | "u" | "Q" | "d" | "k" | "t" | "V" | "a" | "x" | "G" | "v" | "D" | "m" | "F" | "w" | "i" | "n" | "L" | "p" | "q" | "W" | "A" | "X" | "I" | "O" | "l" | "P" | "H" | "e" | "f" | "o" | "j" | "Z" | "g" | "E" | "r" | "M" | "z" | "U" ;
 letter :: FR Char Char
-letter = oneof (map (\c -> token c *> exact c) ['y', 'c', 'K', 'T', 's', 'N', 'b', 'S', 'R', 'Y', 'C', 'B', 'h', 'J', 'u', 'Q', 'd', 'k', 't', 'V', 'a', 'x', 'G', 'v', 'D', 'm', 'F', 'w', 'i', 'n', 'L', 'p', 'q', 'W', 'A', 'X', 'I', 'O', 'l', 'P', 'H', 'e', 'f', 'o', 'j', 'Z', 'g', 'E', 'r', 'M', 'z', 'U'])
+letter = oneof (map (\c -> token c >> exact c) ['y', 'c', 'K', 'T', 's', 'N', 'b', 'S', 'R', 'Y', 'C', 'B', 'h', 'J', 'u', 'Q', 'd', 'k', 't', 'V', 'a', 'x', 'G', 'v', 'D', 'm', 'F', 'w', 'i', 'n', 'L', 'p', 'q', 'W', 'A', 'X', 'I', 'O', 'l', 'P', 'H', 'e', 'f', 'o', 'j', 'Z', 'g', 'E', 'r', 'M', 'z', 'U'])
 
 -- unescapedspecial = "/" | "+" | ":" | "@" | "$" | "!" | "'" | "(" | "," | "." | ")" | "-" | "#" | "_" | ... "%" | "=" | ">" | "<" | "{" | "}" | "^" | "*" | "|" | ";" | " " ; -- NOTE: I had to add some things
 unescapedspecial :: FR Char Char
-unescapedspecial = oneof (map (\c -> token c *> exact c) ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_', '%', '=', '>', '<', '{', '}', '^', '*', '|', ';', ' '])
+unescapedspecial = oneof (map (\c -> token c >> exact c) ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_', '%', '=', '>', '<', '{', '}', '^', '*', '|', ';', ' '])
 
 -- escapedspecial = "\\b" | "\\n" | "\\r" | "\\/" | "\\u" hextwobyte | "\\\\" | "\\t" | "\\\"" | "\\f" ;
 escapedspecial :: FR Char Char
 escapedspecial =
-  oneof
-    [ token '\\' >> token 'b' >> exact '\b',
-      token '\\' >> token 'n' >> exact '\n',
-      token '\\' >> token 'r' >> exact '\r',
-      token '\\' >> token '/' >> exact '/',
-      token '\\' >> token 'u' >> hextwobyte,
-      token '\\' >> token '\\' >> exact '\\',
-      token '\\' >> token 't' >> exact '\t',
-      token '\\' >> token '"' >> exact '"',
-      token '\\' >> token 'f' >> exact '\f'
+  labelled
+    [ ("'\\b'", exact '\b'),
+      ("'\\n'", exact '\n'),
+      ("'\\r'", exact '\r'),
+      ("'\\/'", exact '/'),
+      ("'\\u' hextwobyte", hextwobyte),
+      ("'\\\\'", exact '\\'),
+      ("'\\t'", exact '\t'),
+      ("'\\\"", exact '\"'),
+      ("'\\f'", exact '\f')
     ]
 
 -- hextwobyte = hexdigit hexdigit hexdigit hexdigit ;
 hextwobyte :: FR Char Char
-hextwobyte = do
+hextwobyte = comap (\c -> if c == '\"' then Nothing else Just c) $ do
   a <- lmap ((!! 0) . printf "%04X" . ord) hexdigit
   b <- lmap ((!! 1) . printf "%04X" . ord) hexdigit
   c <- lmap ((!! 2) . printf "%04X" . ord) hexdigit
@@ -138,41 +175,59 @@ hextwobyte = do
 
 -- hexdigit = hexletter | digit ;
 hexdigit :: FR Char Char
-hexdigit = oneof [hexletter, digit]
+hexdigit = labelled [("hexletter", hexletter), ("digit", digit)]
 
 -- hexletter = "f" | "e" | "F" | "A" | "D" | "a" | "B" | "d" | "E" | "c" | "b" | "C" ;
 hexletter :: FR Char Char
-hexletter = oneof (map (\c -> token c *> exact c) ['f', 'e', 'F', 'A', 'D', 'a', 'B', 'd', 'E', 'c', 'b', 'C'])
+hexletter = oneof (map (\c -> token c >> exact c) ['f', 'e', 'F', 'A', 'D', 'a', 'B', 'd', 'E', 'c', 'b', 'C'])
 
 -- number = int_ frac exp | int_ frac | int_ exp | int_ ;
-number :: FR Number Number
+number :: FR String String
 number =
-  oneof
-    [ IntFracExp <$> tryFocus (_IntFracExp . _1) int_ <*> tryFocus (_IntFracExp . _2) frac <*> tryFocus (_IntFracExp . _3) expo,
-      IntFrac <$> tryFocus (_IntFrac . _1) int_ <*> tryFocus (_IntFrac . _2) frac,
-      IntExp <$> tryFocus (_IntExp . _1) int_ <*> tryFocus (_IntExp . _2) expo,
-      Int <$> tryFocus _Int int_
+  labelled
+    [ ( "int_ frac exp",
+        do
+          i <- int_
+          f <- lmap (drop (length i)) frac
+          ex <- lmap (drop (length i + length f)) expo
+          pure (i ++ f ++ ex)
+      ),
+      ( "int_ frac",
+        do
+          i <- int_
+          f <- lmap (drop (length i)) frac
+          pure (i ++ f)
+      ),
+      ( "int_ exp",
+        do
+          i <- int_
+          ex <- lmap (drop (length i)) expo
+          pure (i ++ ex)
+      ),
+      ("int_", int_)
     ]
 
 -- int_ = nonzerodigit digits | "-" digit digits | digit | "-" digit ;
 int_ :: FR String String
 int_ =
-  oneof
-    [ (:) <$> tryFocus _head nonzerodigit <*> tryFocus _tail digits,
-      (:) <$> tryFocus _head (token '-' *> exact '-') <*> tryFocus _tail ((:) <$> tryFocus _head digit <*> tryFocus _tail digits),
-      (\x y -> x : [y])
-        <$> tryFocus _head (token '-' *> exact '-')
-        <*> comap (\case [x] -> Just x; _ -> Nothing) digit,
-      (: []) <$> comap (\case [x] -> Just x; _ -> Nothing) digit
+  labelled
+    [ ("nonzero digits", (:) <$> tryFocus _head nonzerodigit <*> tryFocus _tail digits),
+      ("'-' digit digits", (:) <$> tryFocus _head (exact '-') <*> tryFocus _tail ((:) <$> tryFocus _head digit <*> tryFocus _tail digits)),
+      ( "'-' digit",
+        (\x y -> x : [y])
+          <$> tryFocus _head (exact '-')
+          <*> tryFocus (_tail . _head) digit
+      ),
+      ("digit", (: []) <$> tryFocus _head digit)
     ]
 
 -- frac = "." digits ;
 frac :: FR String String
-frac = token '.' *> digits
+frac = label "'.' digits" >> (:) <$> tryFocus _head (exact '.') <*> tryFocus _tail digits
 
 -- exp = e digits ;
 expo :: FR String String
-expo = (++) <$> comap (fmap fst . splite) e <*> comap (fmap snd . splite) digits
+expo = label "e digits" >> (++) <$> comap (fmap fst . splite) e <*> comap (fmap snd . splite) digits
   where
     splite ('e' : '+' : xs) = Just (['e', '+'], xs)
     splite ('e' : '-' : xs) = Just (['e', '-'], xs)
@@ -185,27 +240,29 @@ expo = (++) <$> comap (fmap fst . splite) e <*> comap (fmap snd . splite) digits
 -- digits = digit digits | digit ;
 digits :: FR String String
 digits =
-  oneof
-    [ (:) <$> tryFocus _head digit <*> tryFocus _tail digits,
-      (: []) <$> comap (\case [x] -> Just x; _ -> Nothing) digit
+  labelled
+    [ ("digit digits", (:) <$> tryFocus _head digit <*> tryFocus _tail digits),
+      ("digit", (: []) <$> tryFocus _head digit)
     ]
 
 -- digit = nonzerodigit | "0" ;
 digit :: FR Char Char
-digit = oneof [nonzerodigit, token '0' *> exact '0']
+digit =
+  labelled [("nonzerodigit", nonzerodigit), ("'0'", exact '0')]
 
 -- nonzerodigit = "3" | "4" | "7" | "8" | "1" | "9" | "5" | "6" | "2" ;
 nonzerodigit :: FR Char Char
-nonzerodigit = oneof (map (\c -> token c *> exact c) ['3', '4', '7', '8', '1', '9', '5', '6', '2'])
+nonzerodigit =
+  oneof (map (\c -> token c >> exact c) ['3', '4', '7', '8', '1', '9', '5', '6', '2'])
 
 -- e = "e" | "E" | "e" "-" | "E" "-" | "E" "+" | "e" "+" ;
 e :: FR String String
 e =
-  oneof
-    [ token 'e' *> exact "",
-      token 'E' *> exact "",
-      token 'e' *> token '-' *> exact "-",
-      token 'E' *> token '-' *> exact "-",
-      token 'E' *> token '+' *> exact "+",
-      token 'e' *> token '+' *> exact "+"
+  labelled
+    [ ("'e'", lmap (take 1) (exact "e")),
+      ("'E'", lmap (take 1) (exact "E")),
+      ("'e-'", lmap (take 2) (exact "e-")),
+      ("'E-'", lmap (take 2) (exact "E-")),
+      ("'e+'", lmap (take 2) (exact "e+")),
+      ("'E+'", lmap (take 2) (exact "E+"))
     ]

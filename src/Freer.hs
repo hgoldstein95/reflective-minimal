@@ -38,7 +38,7 @@ import Control.Monad.Logic (Logic, MonadLogic ((>>-)), observeAll)
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (chr, ord)
 import Data.Foldable (asum)
-import Data.List (group, minimumBy, nub, sort, transpose)
+import Data.List (group, minimumBy, nub, sort, sortOn, transpose)
 import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe, maybeToList)
 import Data.Monoid (First)
 import Data.Ord (comparing)
@@ -389,7 +389,7 @@ unparse :: FR a a -> a -> [[String]]
 unparse rg v = snd <$> aux rg v
   where
     interpR :: Refl b a -> b -> [(a, [String])]
-    interpR (Pick xs) b = take 1 $ do
+    interpR (Pick xs) b = take 1 . reverse . sortOn (length . snd) $ do
       (_, ms, x) <- xs
       case ms of
         Nothing -> aux x b
