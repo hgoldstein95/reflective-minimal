@@ -3,7 +3,7 @@
 
 module JSONExample where
 
-import Control.Lens (makePrisms, _1, _2, _3, _head, _tail)
+import Control.Lens (makePrisms, _head, _tail)
 import Data.Char
 import Data.Profunctor (lmap)
 import Freer
@@ -113,7 +113,7 @@ value =
 string :: FR String String
 string =
   labelled
-    [ ("'\"' '\"'", lmap (take 2) exact "\"\""),
+    [ ("'\"' '\"'", lmap (take 2) (exact "\"\"")),
       ( "'\"' chars '\"'",
         do
           q1 <- lmap (take 1) (exact ['"'])
@@ -127,8 +127,8 @@ string =
 chars :: FR String String
 chars =
   labelled
-    [ ("char_ chars", (:) <$> tryFocus _head char_ <*> tryFocus _tail chars),
-      ("char_", (: []) <$> tryFocus _head char_)
+    [ ("char_", (: []) <$> tryFocus _head char_),
+      ("char_ chars", (:) <$> tryFocus _head char_ <*> tryFocus _tail chars)
     ]
 
 -- char_ = digit | unescapedspecial | letter | escapedspecial ;
@@ -185,12 +185,12 @@ hexletter = oneof (map (\c -> token c >> exact c) ['f', 'e', 'F', 'A', 'D', 'a',
 number :: FR String String
 number =
   labelled
-    [ ( "int_ frac exp",
+    [ ("int_", int_),
+      ( "int_ exp",
         do
           i <- int_
-          f <- lmap (drop (length i)) frac
-          ex <- lmap (drop (length i + length f)) expo
-          pure (i ++ f ++ ex)
+          ex <- lmap (drop (length i)) expo
+          pure (i ++ ex)
       ),
       ( "int_ frac",
         do
@@ -198,13 +198,13 @@ number =
           f <- lmap (drop (length i)) frac
           pure (i ++ f)
       ),
-      ( "int_ exp",
+      ( "int_ frac exp",
         do
           i <- int_
-          ex <- lmap (drop (length i)) expo
-          pure (i ++ ex)
-      ),
-      ("int_", int_)
+          f <- lmap (drop (length i)) frac
+          ex <- lmap (drop (length i + length f)) expo
+          pure (i ++ f ++ ex)
+      )
     ]
 
 -- int_ = nonzerodigit digits | "-" digit digits | digit | "-" digit ;
@@ -241,8 +241,8 @@ expo = label "e digits" >> (++) <$> comap (fmap fst . splite) e <*> comap (fmap 
 digits :: FR String String
 digits =
   labelled
-    [ ("digit digits", (:) <$> tryFocus _head digit <*> tryFocus _tail digits),
-      ("digit", (: []) <$> tryFocus _head digit)
+    [ ("digit", (: []) <$> tryFocus _head digit),
+      ("digit digits", (:) <$> tryFocus _head digit <*> tryFocus _tail digits)
     ]
 
 -- digit = nonzerodigit | "0" ;
@@ -266,3 +266,89 @@ e =
       ("'e+'", lmap (take 2) (exact "e+")),
       ("'E+'", lmap (take 2) (exact "E+"))
     ]
+
+package :: FR String String
+package =
+  obj
+    [ ("name", str),
+      ("description", str),
+      ( "scripts",
+        obj
+          [ ("start", str),
+            ("build", str),
+            ("test", str)
+          ]
+      ),
+      ( "repository",
+        obj
+          [ ("type", str),
+            ("url", str)
+          ]
+      ),
+      ("keywords", arr str),
+      ("author", str),
+      ("license", str),
+      ("devDependencies", keyVal str),
+      ("dependencies", keyVal str)
+    ]
+  where
+    quote s = "\"" ++ s ++ "\""
+    str = string
+    obj fields = do
+      _ <- lmap (take 1) (exact "{")
+      fs <- lmap (drop 1) (aux fields)
+      _ <- lmap (take 1 . drop (1 + length fs)) (exact "}")
+      pure ("{" ++ fs ++ "}")
+      where
+        aux [] = pure ""
+        aux [pr] = assign pr
+        aux (pr : fs) = do
+          p <- assign pr
+          _ <- lmap (take 1 . drop (length p)) (exact ",")
+          vs <- lmap (drop (1 + length p)) (aux fs)
+          pure (p ++ "," ++ vs)
+        assign (s, val) = do
+          let s' = quote s
+          _ <- lmap (take (length s')) (exact s')
+          _ <- lmap (take 1 . drop (length s')) (exact ":")
+          v <- lmap (drop (length s' + 1)) val
+          pure (s' ++ ":" ++ v)
+    keyVal elt = do
+      _ <- lmap (take 1) (exact "{")
+      fs <- lmap (drop 1) aux
+      _ <- lmap (take 1 . drop (1 + length fs)) (exact "}")
+      pure ("{" ++ fs ++ "}")
+      where
+        aux =
+          labelled
+            [ ("assign", assign),
+              ( "assign ',' assigns",
+                do
+                  el <- assign
+                  _ <- lmap (take 1 . drop (length el)) (exact ",")
+                  es <- lmap (drop (length el + 1)) aux
+                  pure (el ++ "," ++ es)
+              )
+            ]
+        assign = do
+          s <- string
+          _ <- lmap (take 1 . drop (length s)) (exact ":")
+          v <- lmap (drop (length s + 1)) elt
+          pure (s ++ ":" ++ v)
+    arr elt = do
+      _ <- lmap (take 1) (exact "[")
+      fs <- lmap (drop 1) aux
+      _ <- lmap (take 1 . drop (1 + length fs)) (exact "]")
+      pure ("[" ++ fs ++ "]")
+      where
+        aux =
+          labelled -- TODO Only one?
+            [ ("elt", elt),
+              ( "elt ',' elts",
+                do
+                  el <- elt
+                  _ <- lmap (take 1 . drop (length el)) (exact ",")
+                  es <- lmap (drop (length el + 1)) aux
+                  pure (el ++ "," ++ es)
+              )
+            ]

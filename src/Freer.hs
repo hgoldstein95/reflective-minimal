@@ -17,7 +17,7 @@ module Freer where
 import BidirectionalProfunctors (Profmonad)
 import Bits
   ( BitNode (..),
-    BitTree (BitTree),
+    BitTree,
     Bits (..),
     bit,
     bitsToInt,
@@ -27,6 +27,7 @@ import Bits
     integerToBits,
     listBits,
     swapBits,
+    tree,
     zeroDraws,
     (+++),
   )
@@ -38,7 +39,7 @@ import Control.Monad.Logic (Logic, MonadLogic ((>>-)), observeAll)
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (chr, ord)
 import Data.Foldable (asum)
-import Data.List (group, minimumBy, nub, sort, sortOn, transpose)
+import Data.List (group, minimumBy, nub, sort, transpose)
 import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe, maybeToList)
 import Data.Monoid (First)
 import Data.Ord (comparing)
@@ -250,7 +251,7 @@ check g v = isJust (interp g v Nothing)
     interp (Bind x f) b s = interpR x b s >>= \y -> interp (f y) b s
 
     interpR :: Refl b a -> b -> Maybe Int -> Maybe a
-    interpR (Pick xs) b s = listToMaybe (catMaybes [interp x b s | (_, _, x) <- xs])
+    interpR (Pick xs) b s = (\case [] -> Nothing; l -> Just (last l)) (catMaybes [interp x b s | (_, _, x) <- xs])
     interpR (Lmap f x) b s = interpR x (f b) s
     interpR (Prune x) b s = b >>= \b' -> interpR x b' s
     interpR (ChooseInteger (lo, hi)) b _
@@ -369,7 +370,7 @@ choices rg v = snd <$> aux rg v Nothing
       (y, bs') <- aux x b s
       pure (y, foldr ((+++) . bit) BitTree.empty (unBits bs) +++ bs')
     interpR (ChooseInteger (lo, hi)) b _ =
-      [(b, BitTree . map Bit $ integerToBits (lo, hi) b) | not (b < lo || b > hi)]
+      [(b, tree . map Bit $ integerToBits (lo, hi) b) | not (b < lo || b > hi)]
     interpR (Lmap f x) b s = interpR x (f b) s
     interpR (Prune x) b s = case b of
       Nothing -> []
@@ -389,7 +390,7 @@ unparse :: FR a a -> a -> [[String]]
 unparse rg v = snd <$> aux rg v
   where
     interpR :: Refl b a -> b -> [(a, [String])]
-    interpR (Pick xs) b = take 1 . reverse . sortOn (length . snd) $ do
+    interpR (Pick xs) b = take 1 . reverse $ do
       (_, ms, x) <- xs
       case ms of
         Nothing -> aux x b
