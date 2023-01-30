@@ -118,7 +118,7 @@ reflHeap = FR.sized (arbHeap Nothing)
                   my <- greaterThan mx
                   case my of
                     Nothing -> FR.exact Empty
-                    Just y -> Node y <$> FR.tryFocus (_Node . _2) arbHeap2 <*> FR.tryFocus (_Node . _3) arbHeap2
+                    Just y -> Node y <$> FR.focus (_Node . _2) arbHeap2 <*> FR.focus (_Node . _3) arbHeap2
                       where
                         arbHeap2 = arbHeap (Just y) (n `div` 2)
               )
@@ -129,11 +129,11 @@ reflHeap = FR.sized (arbHeap Nothing)
           lmap
             (\case Empty -> Nothing; Node x _ _ -> Just x)
             ( case v of
-                Nothing -> Just <$> FR.tryFocus _Just FR.integer
+                Nothing -> Just <$> FR.focus _Just FR.integer
                 Just hi -> FR.sized $ \i ->
                   if hi > i
                     then FR.exact Nothing
-                    else Just <$> FR.tryFocus _Just (FR.choose (hi, i))
+                    else Just <$> FR.focus _Just (FR.choose (hi, i))
             )
 
 instance Arbitrary (Heap Int) where

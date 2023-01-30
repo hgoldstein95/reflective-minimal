@@ -65,8 +65,8 @@ int16 =
 reflT :: FR T T
 reflT =
   T
-    <$> FR.focus (_T . _1) (FR.listOf int16)
-    <*> FR.focus (_T . _2) (FR.listOf int16)
-    <*> FR.focus (_T . _3) (FR.listOf int16)
-    <*> FR.focus (_T . _4) (FR.listOf int16)
-    <*> FR.focus (_T . _5) (FR.listOf int16)
+    <$> FR.focus' (_T . _1) (FR.listOf int16)
+    <*> FR.focus' (_T . _2) (FR.listOf int16)
+    <*> FR.focus' (_T . _3) (FR.listOf int16)
+    <*> FR.focus' (_T . _4) (FR.listOf int16)
+    <*> FR.focus' (_T . _5) (FR.listOf int16)

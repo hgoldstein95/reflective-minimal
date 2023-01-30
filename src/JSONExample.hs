@@ -147,8 +147,8 @@ string1 =
 chars :: FR String String
 chars =
   labelled
-    [ ("char_", (: []) <$> tryFocus _head char_),
-      ("char_ chars", (:) <$> tryFocus _head char_ <*> tryFocus _tail chars)
+    [ ("char_", (: []) <$> focus _head char_),
+      ("char_ chars", (:) <$> focus _head char_ <*> focus _tail chars)
     ]
 
 -- char_ = digit | unescapedspecial | letter | escapedspecial ;
@@ -231,19 +231,19 @@ number =
 int_ :: FR String String
 int_ =
   labelled
-    [ ("nonzero digits", (:) <$> tryFocus _head nonzerodigit <*> tryFocus _tail digits),
-      ("'-' digit digits", (:) <$> tryFocus _head (exact '-') <*> tryFocus _tail ((:) <$> tryFocus _head digit <*> tryFocus _tail digits)),
+    [ ("nonzero digits", (:) <$> focus _head nonzerodigit <*> focus _tail digits),
+      ("'-' digit digits", (:) <$> focus _head (exact '-') <*> focus _tail ((:) <$> focus _head digit <*> focus _tail digits)),
       ( "'-' digit",
         (\x y -> x : [y])
-          <$> tryFocus _head (exact '-')
-          <*> tryFocus (_tail . _head) digit
+          <$> focus _head (exact '-')
+          <*> focus (_tail . _head) digit
       ),
-      ("digit", (: []) <$> tryFocus _head digit)
+      ("digit", (: []) <$> focus _head digit)
     ]
 
 -- frac = "." digits ;
 frac :: FR String String
-frac = label "'.' digits" >> (:) <$> tryFocus _head (exact '.') <*> tryFocus _tail digits
+frac = label "'.' digits" >> (:) <$> focus _head (exact '.') <*> focus _tail digits
 
 -- exp = e digits ;
 expo :: FR String String
@@ -261,8 +261,8 @@ expo = label "e digits" >> (++) <$> comap (fmap fst . splite) e <*> comap (fmap 
 digits :: FR String String
 digits =
   labelled
-    [ ("digit", (: []) <$> tryFocus _head digit),
-      ("digit digits", (:) <$> tryFocus _head digit <*> tryFocus _tail digits)
+    [ ("digit", (: []) <$> focus _head digit),
+      ("digit digits", (:) <$> focus _head digit <*> focus _tail digits)
     ]
 
 -- digit = nonzerodigit | "0" ;

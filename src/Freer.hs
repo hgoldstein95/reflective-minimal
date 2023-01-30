@@ -147,8 +147,8 @@ bool = oneof [exact True, exact False]
 vectorOf :: Eq a => Int -> FR a a -> FR [a] [a]
 vectorOf 0 _ = exact []
 vectorOf n g = do
-  x <- tryFocus _head g
-  xs <- tryFocus _tail (vectorOf (n - 1) g)
+  x <- focus _head g
+  xs <- focus _tail (vectorOf (n - 1) g)
   exact (x : xs)
 
 listOf :: Eq a => FR a a -> FR [a] [a]
@@ -160,16 +160,16 @@ listOf g = sized aux
         [ (1, exact []),
           ( n,
             do
-              x <- tryFocus _head g
-              xs <- tryFocus _tail (aux (n - 1))
+              x <- focus _head g
+              xs <- focus _tail (aux (n - 1))
               exact (x : xs)
           )
         ]
 
 nonEmptyListOf :: Eq a => FR a a -> FR [a] [a]
 nonEmptyListOf g = do
-  x <- tryFocus _head g
-  xs <- tryFocus _tail (sized aux)
+  x <- focus _head g
+  xs <- focus _tail (sized aux)
   exact (x : xs)
   where
     aux 0 = exact []
@@ -178,8 +178,8 @@ nonEmptyListOf g = do
         [ (1, exact []),
           ( n,
             do
-              x <- tryFocus _head g
-              xs <- tryFocus _tail (aux (n - 1))
+              x <- focus _head g
+              xs <- focus _tail (aux (n - 1))
               exact (x : xs)
           )
         ]
@@ -187,11 +187,11 @@ nonEmptyListOf g = do
 fwd :: FR c a -> FR Void a
 fwd = lmap (\case {})
 
-tryFocus :: Getting (First u') s u' -> FR u' v -> FR s v
-tryFocus = comap . preview
+focus :: Getting (First u') s u' -> FR u' v -> FR s v
+focus = comap . preview
 
-focus :: Getting b s b -> FR b c -> FR s c
-focus = lmap . view
+focus' :: Getting b s b -> FR b c -> FR s c
+focus' = lmap . view
 
 resize :: Int -> FR b a -> FR b a
 resize _ (Return x) = Return x
@@ -508,9 +508,9 @@ bst = aux (1, 10)
               ),
               ( "node",
                 do
-                  x <- tryFocus (_Node . _2) (choose (lo, hi))
-                  l <- tryFocus (_Node . _1) (aux (lo, x - 1))
-                  r <- tryFocus (_Node . _3) (aux (x + 1, hi))
+                  x <- focus (_Node . _2) (choose (lo, hi))
+                  l <- focus (_Node . _1) (aux (lo, x - 1))
+                  r <- focus (_Node . _3) (aux (x + 1, hi))
                   exact (Node l x r)
               )
             ]
@@ -541,8 +541,8 @@ expression = expr (10 :: Int)
       | otherwise =
           oneof
             [ do
-                x <- tryFocus (_Add . _1) (term (n `div` 2))
-                y <- token "+" *> tryFocus (_Add . _2) (expr (n `div` 2))
+                x <- focus (_Add . _1) (term (n `div` 2))
+                y <- token "+" *> focus (_Add . _2) (expr (n `div` 2))
                 pure (Add x y),
               term n
             ]
@@ -551,16 +551,16 @@ expression = expr (10 :: Int)
       | otherwise =
           oneof
             [ do
-                x <- tryFocus (_Mul . _1) (factor (n `div` 2))
-                y <- token "*" *> tryFocus (_Mul . _2) (term (n `div` 2))
+                x <- focus (_Mul . _1) (factor (n `div` 2))
+                y <- token "*" *> focus (_Mul . _2) (term (n `div` 2))
                 pure (Mul x y),
               factor n
             ]
     factor n
-      | n <= 1 = Num <$> tryFocus _Num (choose (1, 10))
+      | n <= 1 = Num <$> focus _Num (choose (1, 10))
       | otherwise =
           oneof
-            [ Num <$> tryFocus _Num (choose (1, 10)),
+            [ Num <$> focus _Num (choose (1, 10)),
               token "(" *> expr (n - 1) <* token ")"
             ]
     token s = labelled [(s, pure ())]

@@ -338,51 +338,51 @@ size (Lang m f) = sumit sizem m + sumit sizef f
     sumit sz ls = sum (map sz ls)
 
 reflVar :: FR Var Var
-reflVar = Var <$> FR.focus _Var (FR.nonEmptyListOf FR.alphaNum)
+reflVar = Var <$> FR.focus' _Var (FR.nonEmptyListOf FR.alphaNum)
 
 reflLang :: FR Lang Lang
 reflLang =
   Lang
-    <$> FR.focus (_Lang . _1) (FR.listOf reflMod)
-    <*> FR.focus (_Lang . _2) (FR.listOf reflFunc)
+    <$> FR.focus' (_Lang . _1) (FR.listOf reflMod)
+    <*> FR.focus' (_Lang . _2) (FR.listOf reflFunc)
 
 reflMod :: FR Mod Mod
 reflMod =
   Mod
-    <$> FR.focus (_Mod . _1) (FR.listOf reflVar)
-    <*> FR.focus (_Mod . _2) (FR.listOf reflVar)
+    <$> FR.focus' (_Mod . _1) (FR.listOf reflVar)
+    <*> FR.focus' (_Mod . _2) (FR.listOf reflVar)
 
 reflFunc :: FR Func Func
 reflFunc =
   Func
-    <$> FR.focus (_Func . _1) reflVar
-    <*> FR.focus (_Func . _2) (FR.listOf reflExp)
-    <*> FR.focus (_Func . _3) (FR.listOf reflStmt)
+    <$> FR.focus' (_Func . _1) reflVar
+    <*> FR.focus' (_Func . _2) (FR.listOf reflExp)
+    <*> FR.focus' (_Func . _3) (FR.listOf reflStmt)
 
 reflStmt :: FR Stmt Stmt
 reflStmt =
   FR.oneof
-    [ Assign <$> FR.tryFocus (_Assign . _1) reflVar <*> FR.tryFocus (_Assign . _2) reflExp,
-      Alloc <$> FR.tryFocus (_Alloc . _1) reflVar <*> FR.tryFocus (_Alloc . _2) reflExp,
-      Return <$> FR.tryFocus _Return reflExp
+    [ Assign <$> FR.focus (_Assign . _1) reflVar <*> FR.focus (_Assign . _2) reflExp,
+      Alloc <$> FR.focus (_Alloc . _1) reflVar <*> FR.focus (_Alloc . _2) reflExp,
+      Return <$> FR.focus _Return reflExp
     ]
 
 reflExp :: FR Exp Exp
 reflExp = FR.sized go
   where
-    go i | i <= 1 = FR.oneof [Bool <$> FR.tryFocus _Bool FR.bool, Int <$> FR.tryFocus _Int FR.integer]
+    go i | i <= 1 = FR.oneof [Bool <$> FR.focus _Bool FR.bool, Int <$> FR.focus _Int FR.integer]
     go i =
       let g = go (i `div` 2)
        in FR.frequency
-            [ (1, Bool <$> FR.tryFocus _Bool FR.bool),
-              (1, Int <$> FR.tryFocus _Int FR.integer),
-              (10, Not <$> FR.tryFocus _Not (go (i - 1))),
-              (100, And <$> FR.tryFocus (_And . _1) g <*> FR.tryFocus (_And . _2) g),
-              (100, Or <$> FR.tryFocus (_Or . _1) g <*> FR.tryFocus (_Or . _2) g),
-              (100, Add <$> FR.tryFocus (_Add . _1) g <*> FR.tryFocus (_Add . _2) g),
-              (100, Sub <$> FR.tryFocus (_Sub . _1) g <*> FR.tryFocus (_Sub . _2) g),
-              (100, Mul <$> FR.tryFocus (_Mul . _1) g <*> FR.tryFocus (_Mul . _2) g),
-              (100, Div <$> FR.tryFocus (_Div . _1) g <*> FR.tryFocus (_Div . _2) g)
+            [ (1, Bool <$> FR.focus _Bool FR.bool),
+              (1, Int <$> FR.focus _Int FR.integer),
+              (10, Not <$> FR.focus _Not (go (i - 1))),
+              (100, And <$> FR.focus (_And . _1) g <*> FR.focus (_And . _2) g),
+              (100, Or <$> FR.focus (_Or . _1) g <*> FR.focus (_Or . _2) g),
+              (100, Add <$> FR.focus (_Add . _1) g <*> FR.focus (_Add . _2) g),
+              (100, Sub <$> FR.focus (_Sub . _1) g <*> FR.focus (_Sub . _2) g),
+              (100, Mul <$> FR.focus (_Mul . _1) g <*> FR.focus (_Mul . _2) g),
+              (100, Div <$> FR.focus (_Div . _1) g <*> FR.focus (_Div . _2) g)
             ]
 
 prop_Parse :: Lang -> Bool

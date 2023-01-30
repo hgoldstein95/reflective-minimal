@@ -40,19 +40,19 @@ eval (Div e0 e1) =
 reflCalc :: FR Exp Exp
 reflCalc = FR.sized mkM
   where
-    mkM 0 = C <$> FR.tryFocus _C FR.integer
+    mkM 0 = C <$> FR.focus _C FR.integer
     mkM n =
       FR.frequency
-        [ (1, C <$> FR.tryFocus _C FR.integer),
+        [ (1, C <$> FR.focus _C FR.integer),
           ( n - 1,
             Add
-              <$> FR.tryFocus (_Add . _1) (mkM (n `div` 2))
-              <*> FR.tryFocus (_Add . _2) (mkM (n `div` 2))
+              <$> FR.focus (_Add . _1) (mkM (n `div` 2))
+              <*> FR.focus (_Add . _2) (mkM (n `div` 2))
           ),
           ( n - 1,
             Div
-              <$> FR.tryFocus (_Div . _1) (mkM (n `div` 2))
-              <*> FR.tryFocus (_Div . _2) (mkM (n `div` 2))
+              <$> FR.focus (_Div . _1) (mkM (n `div` 2))
+              <*> FR.focus (_Div . _2) (mkM (n `div` 2))
           )
         ]
 
