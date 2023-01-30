@@ -16,7 +16,7 @@
 module Freer where
 
 import BidirectionalProfunctors (Profmonad)
-import Bits
+import Choices
   ( BitNode (..),
     BitTree,
     Bits (..),
@@ -27,12 +27,13 @@ import Bits
     flatten,
     integerToBits,
     listBits,
+    subChoices,
     swapBits,
     tree,
     zeroDraws,
     (+++),
   )
-import qualified Bits as BitTree
+import qualified Choices
 import Control.Exception (SomeException)
 import Control.Lens (Getting, makePrisms, over, preview, view, _1, _2, _3, _head, _tail)
 import Control.Monad (ap, guard, (>=>))
@@ -369,19 +370,19 @@ choices rg v = snd <$> aux rg v Nothing
       let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
       (bs, (_, _, x)) <- zip (listBits numBits) xs
       (y, bs') <- aux x b s
-      pure (y, foldr ((+++) . bit) BitTree.empty (unBits bs) +++ bs')
+      pure (y, foldr ((+++) . bit) Choices.empty (unBits bs) +++ bs')
     interpR (ChooseInteger (lo, hi)) b _ =
       [(b, tree . map Bit $ integerToBits (lo, hi) b) | not (b < lo || b > hi)]
     interpR (Lmap f x) b s = interpR x (f b) s
     interpR (Prune x) b s = case b of
       Nothing -> []
       Just a -> interpR x a s
-    interpR GetSize _ Nothing = pure (30, BitTree.empty)
-    interpR GetSize _ (Just n) = pure (n, BitTree.empty)
+    interpR GetSize _ Nothing = pure (30, Choices.empty)
+    interpR GetSize _ (Just n) = pure (n, Choices.empty)
     interpR (Resize n x) b _ = interpR x b (Just n)
 
     aux :: FR b a -> b -> Maybe Int -> [(a, BitTree)]
-    aux (Return x) _ _ = pure (x, BitTree.empty)
+    aux (Return x) _ _ = pure (x, Choices.empty)
     aux (Bind mx f) b s = do
       (x, cs) <- interpR mx b s
       (y, cs') <- aux (f x) b s
@@ -572,6 +573,7 @@ shrink p g =
     . head
     . applyShrinker swapBits
     . applyShrinker zeroDraws
+    . applyShrinker subChoices
     . take 1
     . choices g
   where

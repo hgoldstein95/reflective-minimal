@@ -26,23 +26,17 @@ source-repository head
 library
   exposed-modules:
       BidirectionalProfunctors
-      Bits
       Bound5Example
       CalcExample
-      FR
+      Choices
       Freer
-      GenList
       HeapExample
-      HedgehogTree
+      Hypothesis
       JSONExample
       ListExample
       ParserExample
       PartialProfunctors
-      Reflective
       STLCExample
-      UnGenFChoices
-      UnGenList
-      UniformGen
   other-modules:
       Paths_reflective_minimal
   hs-source-dirs:

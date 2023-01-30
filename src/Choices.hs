@@ -2,7 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternSynonyms #-}
 
-module Bits where
+module Choices where
 
 import Control.Applicative ((<|>))
 import Data.List (tails)
@@ -113,6 +113,12 @@ swapBits = map (tree . map Bit) . aux . unBits . flatten
     aux (True : False : bs) = ([False, True] ++ bs) : (([True, False] ++) <$> bs : aux bs)
     aux (x : xs) = (x :) <$> aux xs
     aux [] = [[]]
+
+subChoices :: BitTree -> [BitTree]
+subChoices BTEmpty = []
+subChoices (BTDraw xs bs) = [xs] ++ subChoices xs ++ subChoices (tree bs)
+subChoices (BTBit _ bs) = subChoices (tree bs)
+subChoices _ = error "undefined"
 
 -- pickSubTree :: BitTree -> [BitTree]
 -- pickSubTree x = filter (< x) . nub . map BitTree . aux . unBitTree $ x

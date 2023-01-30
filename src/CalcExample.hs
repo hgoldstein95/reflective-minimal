@@ -10,22 +10,13 @@
 module CalcExample where
 
 import Control.Lens (makePrisms, _1, _2)
-import Control.Monad (replicateM)
 import Data.Maybe (isJust)
 import Freer (FR)
 import qualified Freer as FR
 import GHC.Generics (Generic)
 import Test.QuickCheck
   ( Arbitrary (..),
-    Args (chatty, maxShrinks, maxSize, maxSuccess),
-    Result (Failure, failingTestCase),
-    Testable (propertyForAllShrinkShow),
-    frequency,
     genericShrink,
-    quickCheckWithResult,
-    shrinkNothing,
-    sized,
-    stdArgs,
   )
 
 data Exp
@@ -66,15 +57,7 @@ reflCalc = FR.sized mkM
         ]
 
 instance Arbitrary Exp where
-  arbitrary = sized mkM
-    where
-      mkM 0 = C <$> arbitrary
-      mkM n =
-        frequency
-          [ (1, C <$> arbitrary),
-            (n - 1, Add <$> mkM (n `div` 2) <*> mkM (n `div` 2)),
-            (n - 1, Div <$> mkM (n `div` 2) <*> mkM (n `div` 2))
-          ]
+  arbitrary = FR.gen reflCalc
   shrink = genericShrink
 
 prop_div :: Exp -> Bool
@@ -103,36 +86,3 @@ size e = case e of
   C _ -> 1
   Add e0 e1 -> 1 + size e0 + size e1
   Div e0 e1 -> 1 + size e0 + size e1
-
-counterExampleNone :: (Show a, Read a, Arbitrary a) => (a -> Bool) -> IO a
-counterExampleNone p =
-  quickCheckWithResult (stdArgs {chatty = False, maxSuccess = 10000}) (propertyForAllShrinkShow arbitrary shrinkNothing ((: []) . show) p) >>= \case
-    Failure {failingTestCase = [v]} -> pure (read v)
-    _ -> error "counterExampleNone: no counterexample found"
-
-counterExampleGeneric :: (Show a, Read a, Arbitrary a) => (a -> Bool) -> (a -> Bool) -> IO a
-counterExampleGeneric p inv =
-  quickCheckWithResult (stdArgs {chatty = False, maxSuccess = 10000}) (propertyForAllShrinkShow arbitrary (filter inv . shrink) ((: []) . show) p) >>= \case
-    Failure {failingTestCase = [v]} -> pure (read v)
-    _ -> error "counterExampleGeneric: no counterexample found"
-
-counterExampleFR :: (Eq a, Show a, Read a) => FR a a -> (a -> Bool) -> IO a
-counterExampleFR g p =
-  quickCheckWithResult (stdArgs {chatty = False, maxSuccess = 10000, maxSize = 30, maxShrinks = 1}) (propertyForAllShrinkShow (FR.gen g) (\v -> let v' = FR.shrink (not . p) g v in [v' | v /= v']) ((: []) . show) p) >>= \case
-    Failure {failingTestCase = [v]} -> pure (read v)
-    _ -> error "counterExampleFR: no counterexample found"
-
-average :: [Int] -> Double
-average xs = fromIntegral (sum xs) / fromIntegral (length xs)
-
-main :: Int -> IO (Double, Double, Double)
-main n = do
-  putStr "calc: "
-  x <- measure $ counterExampleNone prop_div
-  y <- measure $ counterExampleGeneric prop_div divSubTerms
-  z <- measure $ counterExampleFR reflCalc prop_div
-  pure (x, y, z)
-  where
-    measure x = do
-      xs <- replicateM n x
-      pure (average (size <$> xs))

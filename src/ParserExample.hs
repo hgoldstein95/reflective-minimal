@@ -25,18 +25,12 @@ import qualified Freer as FR
 import GHC.Generics (Generic)
 import Test.QuickCheck
   ( Arbitrary (..),
-    Args (chatty),
     Gen,
-    Result (Failure, failingTestCase),
-    Testable (propertyForAllShrinkShow),
     choose,
     elements,
     frequency,
     genericShrink,
     oneof,
-    quickCheckWithResult,
-    shrinkNothing,
-    stdArgs,
     suchThat,
   )
 import Prelude hiding (showList)
@@ -100,27 +94,15 @@ instance Arbitrary Var where
 
 instance Arbitrary Lang where
   arbitrary = Lang <$> nonEmpty arbitrary <*> nonEmpty arbitrary
-
-  -- shrink (Lang m f) = map go (shrink (m, f))
-  --   where
-  --     go (a, b) = Lang a b
   shrink = genericShrink
 
 instance Arbitrary Mod where
   arbitrary = Mod <$> nonEmpty arbitrary <*> nonEmpty arbitrary
 
-  -- shrink (Mod a b) = map go (shrink (a, b))
-  --   where
-  --     go (x, y) = Mod x y
-
   shrink = genericShrink
 
 instance Arbitrary Func where
   arbitrary = Func <$> arbitrary <*> nonEmpty arbitrary <*> nonEmpty arbitrary
-
-  -- shrink (Func f a st) = map go (shrink (a, st))
-  --   where
-  --     go (x, s) = Func f x s
 
   shrink = genericShrink
 
@@ -132,11 +114,6 @@ instance Arbitrary Stmt where
     let a1 = Alloc v e
     let a2 = Return e
     elements [a0, a1, a2]
-
-  --   shrink stmt = case stmt of
-  --     Assign v e -> map (Assign v) (shrink e)
-  --     Alloc v e -> map (Alloc v) (shrink e)
-  --     Return e -> map Return (shrink e)
 
   shrink = genericShrink
 
@@ -156,17 +133,6 @@ instance Arbitrary Exp where
                 (100, Mul <$> g <*> g),
                 (100, Div <$> g <*> g)
               ]
-
-  -- shrink e = case e of
-  --   Int i -> map Int (shrink i)
-  --   Bool b -> map Bool (shrink b)
-  --   Add e0 e1 -> map (uncurry Add) (zip (shrink e0) (shrink e1))
-  --   Sub e0 e1 -> map (uncurry Sub) (zip (shrink e0) (shrink e1))
-  --   Mul e0 e1 -> map (uncurry Mul) (zip (shrink e0) (shrink e1))
-  --   Div e0 e1 -> map (uncurry Div) (zip (shrink e0) (shrink e1))
-  --   Not e0 -> map Not (shrink e0)
-  --   And e0 e1 -> map (uncurry And) (zip (shrink e0) (shrink e1))
-  --   Or e0 e1 -> map (uncurry Or) (zip (shrink e0) (shrink e1))
 
   shrink = genericShrink
 
@@ -456,35 +422,5 @@ size (Lang m f) = sumit sizem m + sumit sizef f
 prop_Parse :: Lang -> Bool
 prop_Parse e = read' (show' e) == e
 
-counterExampleNone :: (Show a, Read a, Arbitrary a) => (a -> Bool) -> IO a
-counterExampleNone p =
-  quickCheckWithResult (stdArgs {chatty = False}) (propertyForAllShrinkShow arbitrary shrinkNothing ((: []) . show) p) >>= \case
-    Failure {failingTestCase = [v]} -> pure (read v)
-    _ -> error "counterExampleFR: no counterexample found"
-
-counterExampleGeneric :: (Show a, Read a, Arbitrary a) => (a -> Bool) -> (a -> Bool) -> IO a
-counterExampleGeneric p inv =
-  quickCheckWithResult (stdArgs {chatty = False}) (propertyForAllShrinkShow arbitrary (filter inv . shrink) ((: []) . show) p) >>= \case
-    Failure {failingTestCase = [v]} -> pure (read v)
-    _ -> error "counterExampleFR: no counterexample found"
-
-counterExampleFR :: (Eq a, Show a, Read a) => FR a a -> (a -> Bool) -> IO a
-counterExampleFR g p =
-  quickCheckWithResult (stdArgs {chatty = False}) (propertyForAllShrinkShow (FR.gen g) (\v -> let v' = FR.shrink (not . p) g v in [v' | v /= v']) ((: []) . show) p) >>= \case
-    Failure {failingTestCase = [v]} -> pure (read v)
-    e -> error $ "counterExampleFR: no counterexample found" ++ show e
-
-average :: [Int] -> Double
-average xs = fromIntegral (sum xs) / fromIntegral (length xs)
-
-main :: Int -> IO (Double, Double, Double)
-main n = do
-  putStr "parser: "
-  x <- measure $ counterExampleNone prop_Parse
-  y <- measure $ counterExampleGeneric prop_Parse (const True)
-  z <- measure $ counterExampleFR reflLang prop_Parse
-  pure (x, y, z)
-  where
-    measure x = do
-      xs <- replicateM n x
-      pure $ average (size <$> xs)
+invariant :: a -> Bool
+invariant = const True

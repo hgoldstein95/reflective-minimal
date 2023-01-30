@@ -1,7 +1,7 @@
 module STLCExample where
 
 import Control.Monad.Reader
-import Data.Maybe (catMaybes, isJust)
+import Data.Maybe (isJust)
 import Test.QuickCheck (Gen)
 import qualified Test.QuickCheck as QC
 

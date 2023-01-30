@@ -10,27 +10,12 @@ module HeapExample where
 -- imports
 
 import Control.Lens (makePrisms, _2, _3, _Just)
-import Control.Monad (replicateM)
-import Data.List (sort, (\\))
+import Data.List (sort)
 import Data.Profunctor (lmap)
 import Freer (FR)
 import qualified Freer as FR
 import GHC.Generics (Generic)
-import Test.QuickCheck
-  ( Arbitrary (..),
-    Args (chatty),
-    Property,
-    Result (Failure, failingTestCase),
-    Testable (propertyForAllShrinkShow),
-    cover,
-    frequency,
-    genericShrink,
-    quickCheckWithResult,
-    shrinkNothing,
-    sized,
-    stdArgs,
-    suchThatMaybe,
-  )
+import Test.QuickCheck (Arbitrary (..), genericShrink)
 
 --------------------------------------------------------------------------
 -- skew heaps
@@ -109,41 +94,6 @@ h ==? xs = invariant h && sort (toList h) == sort xs
 --------------------------------------------------------------------------
 -- properties
 
-prop_Empty :: Bool
-prop_Empty =
-  empty ==? ([] :: [Int])
-
-prop_IsEmpty :: Heap Int -> Bool
-prop_IsEmpty (h :: Heap Int) =
-  isEmpty h == null (toList h)
-
-prop_Unit :: Int -> Bool
-prop_Unit (x :: Int) =
-  unit x ==? [x]
-
-prop_Size :: Heap Int -> Bool
-prop_Size (h :: Heap Int) =
-  size h == length (toList h)
-
-prop_Insert :: Int -> Heap Int -> Bool
-prop_Insert x (h :: Heap Int) =
-  insert x h ==? (x : toList h)
-
-prop_RemoveMin :: Heap Int -> Property
-prop_RemoveMin (h :: Heap Int) =
-  cover 80 (size h > 1) "non-trivial" $
-    case removeMin h of
-      Nothing -> h ==? []
-      Just (x, h') -> x == minimum (toList h) && h' ==? (toList h \\ [x])
-
-prop_Merge :: Heap Int -> Heap Int -> Bool
-prop_Merge h1 (h2 :: Heap Int) =
-  (h1 `merge` h2) ==? (toList h1 ++ toList h2)
-
-prop_FromList :: [Int] -> Bool
-prop_FromList (xs :: [Int]) =
-  fromList xs ==? xs
-
 prop_ToSortedList :: Heap Int -> Bool
 prop_ToSortedList (h :: Heap Int) =
   h ==? xs && xs == sort xs
@@ -165,16 +115,7 @@ reflHeap = FR.sized (arbHeap Nothing)
         (1, FR.exact Empty)
           : [ ( 7,
                 do
-                  my <-
-                    lmap
-                      (\case Empty -> Nothing; Node x _ _ -> Just x)
-                      ( case mx of
-                          Nothing -> Just <$> FR.tryFocus _Just FR.integer
-                          Just hi -> FR.sized $ \i ->
-                            if hi > i
-                              then FR.exact Nothing
-                              else Just <$> FR.tryFocus _Just (FR.choose (hi, i))
-                      )
+                  my <- greaterThan mx
                   case my of
                     Nothing -> FR.exact Empty
                     Just y -> Node y <$> FR.tryFocus (_Node . _2) arbHeap2 <*> FR.tryFocus (_Node . _3) arbHeap2
@@ -183,55 +124,18 @@ reflHeap = FR.sized (arbHeap Nothing)
               )
               | n > 0
             ]
+      where
+        greaterThan v =
+          lmap
+            (\case Empty -> Nothing; Node x _ _ -> Just x)
+            ( case v of
+                Nothing -> Just <$> FR.tryFocus _Just FR.integer
+                Just hi -> FR.sized $ \i ->
+                  if hi > i
+                    then FR.exact Nothing
+                    else Just <$> FR.tryFocus _Just (FR.choose (hi, i))
+            )
 
 instance Arbitrary (Heap Int) where
-  arbitrary = sized (arbHeap Nothing)
-    where
-      arbHeap mx n =
-        frequency $
-          (1, return Empty)
-            : [ ( 7,
-                  do
-                    my <- arbitrary `suchThatMaybe` ((>= mx) . Just)
-                    case my of
-                      Nothing -> return Empty
-                      Just y -> Node y <$> arbHeap2 <*> arbHeap2
-                        where
-                          arbHeap2 = arbHeap (Just y) (n `div` 2)
-                )
-                | n > 0
-              ]
+  arbitrary = FR.gen reflHeap
   shrink = genericShrink
-
-counterExampleNone :: (Show a, Read a, Arbitrary a) => (a -> Bool) -> IO a
-counterExampleNone p =
-  quickCheckWithResult (stdArgs {chatty = False}) (propertyForAllShrinkShow arbitrary shrinkNothing ((: []) . show) p) >>= \case
-    Failure {failingTestCase = [v]} -> pure (read v)
-    _ -> error "counterExampleFR: no counterexample found"
-
-counterExampleGeneric :: (Show a, Read a, Arbitrary a) => (a -> Bool) -> (a -> Bool) -> IO a
-counterExampleGeneric p inv =
-  quickCheckWithResult (stdArgs {chatty = False}) (propertyForAllShrinkShow arbitrary (filter inv . shrink) ((: []) . show) p) >>= \case
-    Failure {failingTestCase = [v]} -> pure (read v)
-    _ -> error "counterExampleFR: no counterexample found"
-
-counterExampleFR :: (Eq a, Show a, Read a) => FR a a -> (a -> Bool) -> IO a
-counterExampleFR g p =
-  quickCheckWithResult (stdArgs {chatty = False}) (propertyForAllShrinkShow (FR.gen g) (\v -> let v' = FR.shrink (not . p) g v in [v' | v /= v']) ((: []) . show) p) >>= \case
-    Failure {failingTestCase = [v]} -> pure (read v)
-    _ -> error "counterExampleFR: no counterexample found"
-
-average :: [Int] -> Double
-average xs = fromIntegral (sum xs) / fromIntegral (length xs)
-
-main :: Int -> IO (Double, Double, Double)
-main n = do
-  putStr "heap: "
-  x <- measure $ counterExampleNone prop_ToSortedList
-  y <- measure $ counterExampleGeneric prop_ToSortedList invariant
-  z <- measure $ counterExampleFR reflHeap prop_ToSortedList
-  pure (x, y, z)
-  where
-    measure x = do
-      xs <- replicateM n x
-      pure $ average (size <$> xs)
