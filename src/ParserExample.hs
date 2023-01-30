@@ -338,26 +338,26 @@ size (Lang m f) = sumit sizem m + sumit sizef f
     sumit sz ls = sum (map sz ls)
 
 reflVar :: FR Var Var
-reflVar = Var <$> FR.focus' _Var (FR.nonEmptyListOf FR.alphaNum)
+reflVar = Var <$> FR.focus _Var (FR.nonEmptyListOf FR.alphaNum)
 
 reflLang :: FR Lang Lang
 reflLang =
   Lang
-    <$> FR.focus' (_Lang . _1) (FR.listOf reflMod)
-    <*> FR.focus' (_Lang . _2) (FR.listOf reflFunc)
+    <$> FR.focus (_Lang . _1) (FR.listOf reflMod)
+    <*> FR.focus (_Lang . _2) (FR.listOf reflFunc)
 
 reflMod :: FR Mod Mod
 reflMod =
   Mod
-    <$> FR.focus' (_Mod . _1) (FR.listOf reflVar)
-    <*> FR.focus' (_Mod . _2) (FR.listOf reflVar)
+    <$> FR.focus (_Mod . _1) (FR.listOf reflVar)
+    <*> FR.focus (_Mod . _2) (FR.listOf reflVar)
 
 reflFunc :: FR Func Func
 reflFunc =
   Func
-    <$> FR.focus' (_Func . _1) reflVar
-    <*> FR.focus' (_Func . _2) (FR.listOf reflExp)
-    <*> FR.focus' (_Func . _3) (FR.listOf reflStmt)
+    <$> FR.focus (_Func . _1) reflVar
+    <*> FR.focus (_Func . _2) (FR.listOf reflExp)
+    <*> FR.focus (_Func . _3) (FR.listOf reflStmt)
 
 reflStmt :: FR Stmt Stmt
 reflStmt =

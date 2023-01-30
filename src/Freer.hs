@@ -190,9 +190,6 @@ fwd = lmap (\case {})
 focus :: Getting (First u') s u' -> FR u' v -> FR s v
 focus = comap . preview
 
-focus' :: Getting b s b -> FR b c -> FR s c
-focus' = lmap . view
-
 resize :: Int -> FR b a -> FR b a
 resize _ (Return x) = Return x
 resize w (Bind x f) = Bind (Resize w x) (resize w . f)
