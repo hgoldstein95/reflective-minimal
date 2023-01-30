@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
@@ -514,14 +515,14 @@ bst = aux (1, 10)
             ]
 
 hypoTree :: FR Tree Tree
-hypoTree = do
-  c <- getbits 1
-  if c /= 0
-    then do
-      l <- comap nodeLeft hypoTree
-      r <- comap nodeRight hypoTree
-      exact (Node l 0 r)
-    else exact Leaf
+hypoTree =
+  oneof
+    [ exact Leaf,
+      do
+        l <- comap nodeLeft hypoTree
+        r <- comap nodeRight hypoTree
+        exact (Node l 0 r)
+    ]
 
 data Expr
   = Num Int
@@ -571,10 +572,11 @@ shrink p g =
     . head
     . applyShrinker swapBits
     . applyShrinker zeroDraws
+    . take 1
     . choices g
   where
     applyShrinker :: (BitTree -> [BitTree]) -> [BitTree] -> [BitTree]
-    applyShrinker s ts =
+    applyShrinker s !ts =
       let ts' = take 1 . filter (any p . regen g . flatten) . sort . concatMap s $ ts
        in if null ts' || ts' == ts then ts else applyShrinker s ts'
 
@@ -606,7 +608,7 @@ main = do
   let n l = Node l 0
   print $ (map flatten . choices hypoTree) (n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
   print $ (map flatten . choices hypoTree) (n Leaf (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
-  print $ (map flatten . choices hypoTree) (n Leaf (n (n Leaf Leaf) Leaf))
+  print $ choices hypoTree (n Leaf (n (n Leaf Leaf) Leaf))
   print $ (map flatten . choices hypoTree) (n Leaf (n Leaf (n Leaf Leaf)))
   print $ choices hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
   print $ choices bst (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
@@ -618,4 +620,5 @@ main = do
   print =<< QC.generate (byExample expression [Mul (Num 1) (Num 2), Mul (Num 3) (Num 4)])
 
   let t = n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf)
+  print (choices hypoTree t)
   print $ shrink unbalanced hypoTree t

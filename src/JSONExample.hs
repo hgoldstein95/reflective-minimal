@@ -123,6 +123,26 @@ string =
       )
     ]
 
+string1 :: FR String String
+string1 =
+  labelled
+    [ ( "'\"' char_ '\"'",
+        do
+          do
+            q1 <- lmap (take 1) (exact ['"'])
+            c <- lmap (!! 1) char_
+            q2 <- lmap (take 1 . drop 2) (exact ['"'])
+            pure (q1 ++ [c] ++ q2)
+      ),
+      ( "'\"' chars '\"'",
+        do
+          q1 <- lmap (take 1) (exact ['"'])
+          cs <- lmap (drop 1) chars
+          q2 <- lmap (take 1 . drop (1 + length cs)) (exact ['"'])
+          pure (q1 ++ cs ++ q2)
+      )
+    ]
+
 -- chars = char_ chars | char_ ;
 chars :: FR String String
 chars =
@@ -135,15 +155,15 @@ chars =
 char_ :: FR Char Char
 char_ =
   labelled
-    [ ("digit", digit),
-      ("unescapedspecial", unescapedspecial),
-      ("letter", letter)
+    [ ("letter", letter),
+      ("digit", digit),
+      ("unescapedspecial", unescapedspecial)
       -- ("escapedspecial", escapedspecial) -- FIXME: I don't know how to fix this.
     ]
 
 -- letter = "y" | "c" | "K" | "T" | "s" | "N" | "b" | "S" | "R" | "Y" | "C" | "B" | "h" | "J" | "u" | "Q" | "d" | "k" | "t" | "V" | "a" | "x" | "G" | "v" | "D" | "m" | "F" | "w" | "i" | "n" | "L" | "p" | "q" | "W" | "A" | "X" | "I" | "O" | "l" | "P" | "H" | "e" | "f" | "o" | "j" | "Z" | "g" | "E" | "r" | "M" | "z" | "U" ;
 letter :: FR Char Char
-letter = oneof (map (\c -> token c >> exact c) ['y', 'c', 'K', 'T', 's', 'N', 'b', 'S', 'R', 'Y', 'C', 'B', 'h', 'J', 'u', 'Q', 'd', 'k', 't', 'V', 'a', 'x', 'G', 'v', 'D', 'm', 'F', 'w', 'i', 'n', 'L', 'p', 'q', 'W', 'A', 'X', 'I', 'O', 'l', 'P', 'H', 'e', 'f', 'o', 'j', 'Z', 'g', 'E', 'r', 'M', 'z', 'U'])
+letter = oneof (map (\c -> token c >> exact c) (['a' .. 'z'] ++ ['A' .. 'Z']))
 
 -- unescapedspecial = "/" | "+" | ":" | "@" | "$" | "!" | "'" | "(" | "," | "." | ")" | "-" | "#" | "_" | ... "%" | "=" | ">" | "<" | "{" | "}" | "^" | "*" | "|" | ";" | " " ; -- NOTE: I had to add some things
 unescapedspecial :: FR Char Char
@@ -253,7 +273,7 @@ digit =
 -- nonzerodigit = "3" | "4" | "7" | "8" | "1" | "9" | "5" | "6" | "2" ;
 nonzerodigit :: FR Char Char
 nonzerodigit =
-  oneof (map (\c -> token c >> exact c) ['3', '4', '7', '8', '1', '9', '5', '6', '2'])
+  oneof (map (\c -> token c >> exact c) ['1', '2', '3', '4', '5', '6', '7', '8', '9'])
 
 -- e = "e" | "E" | "e" "-" | "E" "-" | "E" "+" | "e" "+" ;
 e :: FR String String
@@ -293,7 +313,7 @@ package =
     ]
   where
     quote s = "\"" ++ s ++ "\""
-    str = string
+    str = string1
     obj fields = do
       _ <- lmap (take 1) (exact "{")
       fs <- lmap (drop 1) (aux fields)
@@ -331,7 +351,7 @@ package =
               )
             ]
         assign = do
-          s <- string
+          s <- str
           _ <- lmap (take 1 . drop (length s)) (exact ":")
           v <- lmap (drop (length s + 1)) elt
           pure (s ++ ":" ++ v)

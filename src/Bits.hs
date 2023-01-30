@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternSynonyms #-}
 
@@ -8,12 +9,6 @@ import Data.List (tails)
 
 newtype Bits = Bits {unBits :: [Bool]}
   deriving (Eq)
-
-instance Ord Bits where
-  compare (Bits xs) (Bits ys) =
-    case compare (length xs) (length ys) of
-      EQ -> compare xs ys
-      c -> c
 
 instance Show Bits where
   show (Bits bs) = concatMap (\b -> if b then "1" else "0") bs
@@ -65,10 +60,10 @@ pattern BTDraw ts bs <- BitTree (Draw ts : bs) _
 BitTree xs s1 +++ BitTree ys s2 = BitTree (xs ++ ys) (s1 + s2)
 
 draw :: BitTree -> BitTree
-draw BTEmpty = tree []
-draw (BTBit b []) = tree [Bit b]
-draw (BTDraw xs []) = tree [Draw xs]
-draw b = tree [Draw b]
+draw (BitTree [] _) = empty
+draw (BitTree [Bit b] _) = bit b
+draw (BitTree [Draw xs] s) = BitTree [Draw xs] s
+draw b = BitTree [Draw b] (size b)
 
 bit :: Bool -> BitTree
 bit b = BitTree [Bit b] 1
@@ -83,12 +78,13 @@ tree ns = BitTree ns (sum $ map sz ns)
     sz (Bit _) = 1
 
 flatten :: BitTree -> Bits
-flatten = Bits . aux
+flatten = Bits . ($ []) . aux . unBitTree
   where
-    aux BTEmpty = []
-    aux (BTBit b bs) = b : aux (tree bs)
-    aux (BTDraw xs bs) = aux xs ++ aux (tree bs)
-    aux _ = error "flatten: impossible"
+    aux [] = id
+    aux (Bit !b : !bs) = b `cons` aux bs
+    aux (Draw !xs : !bs) = aux (unBitTree xs) `app` aux bs
+    cons !x !xs = (x :) `app` xs
+    app = (.)
 
 zeroDraws :: BitTree -> [BitTree]
 zeroDraws = aux
@@ -104,7 +100,7 @@ zeroDraws = aux
 
     zeros :: BitTree -> [BitTree]
     zeros =
-      map (tree . map Bit)
+      map (\xs -> BitTree (map Bit xs) (length xs))
         . tails
         . map (const False)
         . unBits

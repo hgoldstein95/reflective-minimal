@@ -15,7 +15,7 @@ main = do
   validate Bound5Example.reflT
 
   print =<< HeapExample.main 100
-  print =<< Bound5Example.main 1
+  print =<< Bound5Example.main 100
   print =<< CalcExample.main 100
   print =<< ParserExample.main 100
   print =<< ListExample.main 100

@@ -5,4 +5,4 @@ import Freer hiding (main)
 import JSONExample
 
 main :: IO ()
-main = getContents >>= print . shrink (isInfixOf "^4.15.3") package
+main = getContents >>= putStrLn . shrink (isInfixOf "^4.15.3") package

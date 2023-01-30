@@ -1,0 +1,28 @@
+{
+  "name": "reflective-generators",
+  "description": "What a great project",
+  "scripts": {
+    "start": "node ./src/server.js",
+    "build": "babel ./src --out-dir ./dist",
+    "test": "mocha --compilers js:babel-core/register --require ./test/setup.js --recursive ./test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://example.com"
+  },
+  "keywords": [
+    "reflective",
+    "generators"
+  ],
+  "author": "test",
+  "license": "mit",
+  "devDependencies": {
+    "babel-cli": "^6.24.1",
+    "babel-core": "^6.24.1",
+    "babel-preset-es2015": "^6.24.1"
+  },
+  "dependencies": {
+    "express": "^4.15.3",
+    "reflective": "^0.0.1"
+  }
+}
