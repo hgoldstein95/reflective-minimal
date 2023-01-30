@@ -68,8 +68,10 @@ main = do
   validate (Freer.resize 10 Parser.reflLang)
   validate Bound5.reflT
 
-  putStr "heap: " >> experiment Heap.prop_ToSortedList Heap.invariant Heap.reflHeap Heap.size 100
-  putStr "bound5: " >> experiment Bound5.prop Bound5.pre Bound5.reflT Bound5.size 100
-  putStr "calc: " >> experiment Calc.prop_div Calc.divSubTerms Calc.reflCalc Calc.size 100
-  putStr "parser: " >> experiment Parser.prop_Parse Parser.invariant Parser.reflLang Parser.size 100
-  putStr "reverse: " >> experiment List.prop_Reverse List.invariant List.reflList List.size 100
+  let n = 1000
+
+  putStr "heap: " >> experiment Heap.prop_ToSortedList Heap.invariant Heap.reflHeap Heap.size n
+  putStr "bound5: " >> experiment Bound5.prop Bound5.pre Bound5.reflT Bound5.size n
+  putStr "calc: " >> experiment Calc.prop_div Calc.divSubTerms Calc.reflCalc Calc.size n
+  putStr "parser: " >> experiment Parser.prop_Parse Parser.invariant Parser.reflLang Parser.size n
+  putStr "reverse: " >> experiment List.prop_Reverse List.invariant List.reflList List.size n

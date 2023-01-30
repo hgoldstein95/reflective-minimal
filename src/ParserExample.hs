@@ -11,14 +11,8 @@
 
 module ParserExample where
 
---------------------------------------------------------------------------
--- imports
-
---------------------------------------------------------------------------
--- imports
 import Control.Lens (makePrisms, _1, _2, _3)
 import Control.Monad.State
-import Data.Char (isAlphaNum)
 import Data.List (intersperse, isPrefixOf, stripPrefix)
 import Freer (FR)
 import qualified Freer as FR
@@ -26,11 +20,7 @@ import GHC.Generics (Generic)
 import Test.QuickCheck
   ( Arbitrary (..),
     Gen,
-    choose,
-    elements,
-    frequency,
     genericShrink,
-    oneof,
     suchThat,
   )
 import Prelude hiding (showList)
@@ -85,104 +75,32 @@ makePrisms ''Var
 nonEmpty :: Gen [a] -> Gen [a]
 nonEmpty a = suchThat a (not . null)
 
-instance Arbitrary Var where
-  arbitrary =
-    Var
-      <$> suchThat
-        arbitrary
-        (\s -> all isAlphaNum s && not (null s))
-
 instance Arbitrary Lang where
-  arbitrary = Lang <$> nonEmpty arbitrary <*> nonEmpty arbitrary
+  arbitrary = FR.gen reflLang
   shrink = genericShrink
 
 instance Arbitrary Mod where
-  arbitrary = Mod <$> nonEmpty arbitrary <*> nonEmpty arbitrary
+  arbitrary = undefined
 
   shrink = genericShrink
 
+instance Arbitrary Var where
+  arbitrary = undefined
+
 instance Arbitrary Func where
-  arbitrary = Func <$> arbitrary <*> nonEmpty arbitrary <*> nonEmpty arbitrary
+  arbitrary = undefined
 
   shrink = genericShrink
 
 instance Arbitrary Stmt where
-  arbitrary = do
-    v <- arbitrary
-    e <- arbitrary
-    let a0 = Assign v e
-    let a1 = Alloc v e
-    let a2 = Return e
-    elements [a0, a1, a2]
+  arbitrary = undefined
 
   shrink = genericShrink
 
 instance Arbitrary Exp where
-  arbitrary = go
-    where
-      go = go' =<< choose (0 :: Int, 100)
-      go' 0 = oneof [Bool <$> arbitrary, Int <$> arbitrary]
-      go' i =
-        let g = go' =<< choose (0 :: Int, i - 1)
-         in frequency
-              [ (10, Not <$> g),
-                (100, And <$> g <*> g),
-                (100, Or <$> g <*> g),
-                (100, Add <$> g <*> g),
-                (100, Sub <$> g <*> g),
-                (100, Mul <$> g <*> g),
-                (100, Div <$> g <*> g)
-              ]
+  arbitrary = undefined
 
   shrink = genericShrink
-
-reflVar :: FR Var Var
-reflVar = Var <$> FR.focus _Var (FR.nonEmptyListOf FR.alphaNum)
-
-reflLang :: FR Lang Lang
-reflLang =
-  Lang
-    <$> FR.focus (_Lang . _1) (FR.listOf reflMod)
-    <*> FR.focus (_Lang . _2) (FR.listOf reflFunc)
-
-reflMod :: FR Mod Mod
-reflMod =
-  Mod
-    <$> FR.focus (_Mod . _1) (FR.listOf reflVar)
-    <*> FR.focus (_Mod . _2) (FR.listOf reflVar)
-
-reflFunc :: FR Func Func
-reflFunc =
-  Func
-    <$> FR.focus (_Func . _1) reflVar
-    <*> FR.focus (_Func . _2) (FR.listOf reflExp)
-    <*> FR.focus (_Func . _3) (FR.listOf reflStmt)
-
-reflStmt :: FR Stmt Stmt
-reflStmt =
-  FR.oneof
-    [ Assign <$> FR.tryFocus (_Assign . _1) reflVar <*> FR.tryFocus (_Assign . _2) reflExp,
-      Alloc <$> FR.tryFocus (_Alloc . _1) reflVar <*> FR.tryFocus (_Alloc . _2) reflExp,
-      Return <$> FR.tryFocus _Return reflExp
-    ]
-
-reflExp :: FR Exp Exp
-reflExp = FR.sized go
-  where
-    go i | i <= 1 = FR.oneof [Bool <$> FR.tryFocus _Bool FR.bool, Int <$> FR.tryFocus _Int FR.integer]
-    go i =
-      let g = go (i `div` 2)
-       in FR.frequency
-            [ (1, Bool <$> FR.tryFocus _Bool FR.bool),
-              (1, Int <$> FR.tryFocus _Int FR.integer),
-              (i `div` 10, Not <$> FR.tryFocus _Not (go (i - 1))),
-              (i, And <$> FR.tryFocus (_And . _1) g <*> FR.tryFocus (_And . _2) g),
-              (i, Or <$> FR.tryFocus (_Or . _1) g <*> FR.tryFocus (_Or . _2) g),
-              (i, Add <$> FR.tryFocus (_Add . _1) g <*> FR.tryFocus (_Add . _2) g),
-              (i, Sub <$> FR.tryFocus (_Sub . _1) g <*> FR.tryFocus (_Sub . _2) g),
-              (i, Mul <$> FR.tryFocus (_Mul . _1) g <*> FR.tryFocus (_Mul . _2) g),
-              (i, Div <$> FR.tryFocus (_Div . _1) g <*> FR.tryFocus (_Div . _2) g)
-            ]
 
 parens :: String -> String
 parens a = '(' : a ++ ")"
@@ -418,6 +336,54 @@ size (Lang m f) = sumit sizem m + sumit sizef f
       And e0 e1 -> 1 + sizee e0 + sizee e1
       Or e0 e1 -> 1 + sizee e0 + sizee e1
     sumit sz ls = sum (map sz ls)
+
+reflVar :: FR Var Var
+reflVar = Var <$> FR.focus _Var (FR.nonEmptyListOf FR.alphaNum)
+
+reflLang :: FR Lang Lang
+reflLang =
+  Lang
+    <$> FR.focus (_Lang . _1) (FR.listOf reflMod)
+    <*> FR.focus (_Lang . _2) (FR.listOf reflFunc)
+
+reflMod :: FR Mod Mod
+reflMod =
+  Mod
+    <$> FR.focus (_Mod . _1) (FR.listOf reflVar)
+    <*> FR.focus (_Mod . _2) (FR.listOf reflVar)
+
+reflFunc :: FR Func Func
+reflFunc =
+  Func
+    <$> FR.focus (_Func . _1) reflVar
+    <*> FR.focus (_Func . _2) (FR.listOf reflExp)
+    <*> FR.focus (_Func . _3) (FR.listOf reflStmt)
+
+reflStmt :: FR Stmt Stmt
+reflStmt =
+  FR.oneof
+    [ Assign <$> FR.tryFocus (_Assign . _1) reflVar <*> FR.tryFocus (_Assign . _2) reflExp,
+      Alloc <$> FR.tryFocus (_Alloc . _1) reflVar <*> FR.tryFocus (_Alloc . _2) reflExp,
+      Return <$> FR.tryFocus _Return reflExp
+    ]
+
+reflExp :: FR Exp Exp
+reflExp = FR.sized go
+  where
+    go i | i <= 1 = FR.oneof [Bool <$> FR.tryFocus _Bool FR.bool, Int <$> FR.tryFocus _Int FR.integer]
+    go i =
+      let g = go (i `div` 2)
+       in FR.frequency
+            [ (1, Bool <$> FR.tryFocus _Bool FR.bool),
+              (1, Int <$> FR.tryFocus _Int FR.integer),
+              (10, Not <$> FR.tryFocus _Not (go (i - 1))),
+              (100, And <$> FR.tryFocus (_And . _1) g <*> FR.tryFocus (_And . _2) g),
+              (100, Or <$> FR.tryFocus (_Or . _1) g <*> FR.tryFocus (_Or . _2) g),
+              (100, Add <$> FR.tryFocus (_Add . _1) g <*> FR.tryFocus (_Add . _2) g),
+              (100, Sub <$> FR.tryFocus (_Sub . _1) g <*> FR.tryFocus (_Sub . _2) g),
+              (100, Mul <$> FR.tryFocus (_Mul . _1) g <*> FR.tryFocus (_Mul . _2) g),
+              (100, Div <$> FR.tryFocus (_Div . _1) g <*> FR.tryFocus (_Div . _2) g)
+            ]
 
 prop_Parse :: Lang -> Bool
 prop_Parse e = read' (show' e) == e
