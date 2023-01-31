@@ -68,7 +68,7 @@ main = do
   validate (Freer.resize 10 Parser.reflLang)
   validate Bound5.reflT
 
-  let n = 1000
+  let n = 100
 
   putStr "heap: " >> experiment Heap.prop_ToSortedList Heap.invariant Heap.reflHeap Heap.size n
   putStr "bound5: " >> experiment Bound5.prop Bound5.pre Bound5.reflT Bound5.size n

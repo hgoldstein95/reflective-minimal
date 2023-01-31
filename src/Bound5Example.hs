@@ -6,10 +6,10 @@
 
 module Bound5Example where
 
-import Control.Lens (Profunctor (lmap), makePrisms, _1, _2, _3, _4, _5)
+import Control.Lens (makePrisms, _1, _2, _3, _4, _5)
 import Data.Bits (shiftL)
 import Data.Int (Int16)
-import Freer (FR)
+import Freer (FR, lmap)
 import qualified Freer as FR
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)

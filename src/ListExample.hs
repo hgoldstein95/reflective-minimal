@@ -5,8 +5,7 @@
 
 module ListExample where
 
-import Data.Profunctor (lmap)
-import Freer (FR, gen, integer, listOf)
+import Freer (FR, gen, integer, listOf, lmap)
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)
 

@@ -11,8 +11,7 @@ module HeapExample where
 
 import Control.Lens (makePrisms, _2, _3, _Just)
 import Data.List (sort)
-import Data.Profunctor (lmap)
-import Freer (FR)
+import Freer (FR, lmap)
 import qualified Freer as FR
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)

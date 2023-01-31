@@ -5,7 +5,6 @@ module JSONExample where
 
 import Control.Lens (makePrisms, _head, _tail)
 import Data.Char
-import Data.Profunctor (lmap)
 import Freer
 import Text.Printf (printf)
 

@@ -2,6 +2,7 @@
 {-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -15,7 +16,6 @@
 
 module Freer where
 
-import BidirectionalProfunctors (Profmonad)
 import Choices
   ( BitNode (..),
     BitTree,
@@ -34,6 +34,7 @@ import Choices
     (+++),
   )
 import qualified Choices
+import Control.Applicative (empty)
 import Control.Exception (SomeException)
 import Control.Lens (Getting, makePrisms, over, preview, view, _1, _2, _3, _head, _tail)
 import Control.Monad (ap, guard, (>=>))
@@ -42,13 +43,11 @@ import Data.Bifunctor (Bifunctor (second))
 import Data.Char (chr, ord)
 import Data.Foldable (asum)
 import Data.List (group, minimumBy, nub, sort, transpose)
-import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe, maybeToList)
+import Data.Maybe (fromMaybe, listToMaybe, maybeToList)
 import Data.Monoid (First)
 import Data.Ord (comparing)
-import Data.Profunctor (Profunctor (..))
 import Data.Void (Void)
 import GHC.IO (catch, evaluate)
-import PartialProfunctors (PartialProfunctor (..))
 import Test.QuickCheck (Args (maxSize, maxSuccess), Gen, forAll, quickCheckWith, stdArgs)
 import qualified Test.QuickCheck as QC
 
@@ -56,11 +55,11 @@ import qualified Test.QuickCheck as QC
 
 type Weight = Rational
 
-data Freer2 f b a where
-  Return :: a -> Freer2 f b a
-  Bind :: f b a -> (a -> Freer2 f b c) -> Freer2 f b c
+data Freer f a where
+  Return :: a -> Freer f a
+  Bind :: f a -> (a -> Freer f c) -> Freer f c
 
-type FR b a = Freer2 Refl b a
+type FR b = Freer (Refl b)
 
 data Refl b a where
   Pick :: [(Int, Maybe String, FR b a)] -> Refl b a
@@ -70,35 +69,31 @@ data Refl b a where
   GetSize :: Refl b Int
   Resize :: Int -> Refl b a -> Refl b a
 
-type Reflective a = FR a a
-
 -- Typeclass Instances Combinators
 
-instance Functor (Freer2 f b) where
+instance Functor (FR b) where
   fmap f (Return x) = Return (f x)
   fmap f (Bind u g) = Bind u (fmap f . g)
 
-instance Applicative (Freer2 f b) where
+instance Applicative (FR b) where
   pure = return
   (<*>) = ap
 
-instance Monad (Freer2 f b) where
+instance Monad (FR b) where
   return = Return
   Return x >>= f = f x
   Bind u g >>= f = Bind u (g >=> f)
 
-instance Profunctor (Freer2 Refl) where
-  dimap _ g (Return a) = Return (g a)
-  dimap f g (Bind x h) = Bind (Lmap f x) (dimap f g . h)
+dimap :: (c -> d) -> (a -> b) -> FR d a -> FR c b
+dimap _ g (Return a) = Return (g a)
+dimap f g (Bind x h) = Bind (Lmap f x) (dimap f g . h)
 
-instance Profmonad (Freer2 Refl)
-
-instance PartialProfunctor (Freer2 Refl) where
-  internaliseMaybe (Return a) = Return a
-  internaliseMaybe (Bind x f) = Bind (Prune x) (internaliseMaybe . f)
+lmap :: (c -> d) -> FR d a -> FR c a
+lmap f = dimap f id
 
 prune :: FR b a -> FR (Maybe b) a
-prune = internaliseMaybe
+prune (Return a) = Return a
+prune (Bind x f) = Bind (Prune x) (prune . f)
 
 comap :: (a -> Maybe b) -> FR b v -> FR a v
 comap f = lmap f . prune
@@ -227,35 +222,48 @@ sized = Bind GetSize
 --     drefl (Lmap g x) = lmap g <$> drefl x
 --     drefl (Prune x) = internaliseMaybe <$> drefl x
 
-gen :: FR b a -> Gen a
+gen :: forall d c. FR d c -> Gen c
 gen = interp
   where
-    interpR :: Refl b a -> Gen a
-    interpR (Pick xs) = QC.frequency [(w, interp x) | (w, _, x) <- xs]
+    interp :: forall b a. FR b a -> Gen a
+    interp (Return x) = pure x
+    interp (Bind r f) = interpR r >>= interp . f
+
+    interpR :: forall b a. Refl b a -> Gen a
+    interpR (Pick xs) = QC.frequency [(w, gen x) | (w, _, x) <- xs]
     interpR (Lmap _ x) = interpR x
     interpR (Prune x) = interpR x
     interpR (ChooseInteger (lo, hi)) = QC.chooseInteger (lo, hi)
     interpR GetSize = QC.getSize
     interpR (Resize n x) = QC.resize n (interpR x)
 
-    interp :: FR b a -> Gen a
-    interp (Return x) = pure x
-    interp (Bind x f) = interpR x >>= interp . f
+checkClean :: FR a a -> a -> Bool
+checkClean g v = (not . null) (interp g v)
+  where
+    interp :: FR b a -> b -> [a]
+    interp (Return x) _ = return x
+    interp (Bind x f) b = interpR x b >>= \y -> interp (f y) b
+
+    interpR :: Refl b a -> b -> [a]
+    interpR (Pick xs) b = xs >>= (\(_, _, x) -> interp x b)
+    interpR (Lmap f x) b = interpR x (f b)
+    interpR (Prune x) b = maybeToList b >>= \b' -> interpR x b'
+    interpR _ _ = error "interpR: clean"
 
 check :: FR a a -> a -> Bool
-check g v = isJust (interp g v Nothing)
+check g v = (not . null) (interp g v Nothing)
   where
-    interp :: FR b a -> b -> Maybe Int -> Maybe a
+    interp :: FR b a -> b -> Maybe Int -> [a]
     interp (Return x) _ _ = return x
     interp (Bind x f) b s = interpR x b s >>= \y -> interp (f y) b s
 
-    interpR :: Refl b a -> b -> Maybe Int -> Maybe a
-    interpR (Pick xs) b s = (\case [] -> Nothing; l -> Just (last l)) (catMaybes [interp x b s | (_, _, x) <- xs])
+    interpR :: Refl b a -> b -> Maybe Int -> [a]
+    interpR (Pick xs) b s = concat [interp x b s | (_, _, x) <- xs]
     interpR (Lmap f x) b s = interpR x (f b) s
-    interpR (Prune x) b s = b >>= \b' -> interpR x b' s
+    interpR (Prune x) b s = maybeToList b >>= \b' -> interpR x b' s
     interpR (ChooseInteger (lo, hi)) b _
       | lo <= b && b <= hi = pure b
-      | otherwise = Nothing
+      | otherwise = empty
     interpR GetSize _ (Just s) = return s
     interpR GetSize _ Nothing = pure 30
     interpR (Resize s x) b _ = interpR x b (Just s)
@@ -493,7 +501,7 @@ bstFwd = aux (1, 10)
                 return (Node l x r)
             ]
 
-bst :: Reflective Tree
+bst :: FR Tree Tree
 bst = aux (1, 10)
   where
     aux (lo, hi)
