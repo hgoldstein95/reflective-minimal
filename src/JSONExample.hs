@@ -17,14 +17,14 @@ data Number = Int String | IntFrac String String | IntExp String String | IntFra
 makePrisms ''JSON
 makePrisms ''Number
 
-token :: Char -> FR b ()
+token :: Char -> Reflective b ()
 token s = labelled [(['\'', s, '\''], pure ())]
 
-label :: String -> FR b ()
+label :: String -> Reflective b ()
 label s = labelled [(s, pure ())]
 
 -- start = array | object ;
-start :: FR String String
+start :: Reflective String String
 start =
   labelled
     [ ("array", array),
@@ -32,7 +32,7 @@ start =
     ]
 
 -- object = "{" "}" | "{" members "}" ;
-object :: FR String String
+object :: Reflective String String
 object =
   labelled
     [ ( "'{' members '}'",
@@ -46,7 +46,7 @@ object =
     ]
 
 -- members = pair | pair ',' members ;
-members :: FR String String
+members :: Reflective String String
 members =
   labelled
     [ ("pair", pair),
@@ -60,7 +60,7 @@ members =
     ]
 
 -- pair = string ':' value ;
-pair :: FR String String
+pair :: Reflective String String
 pair = do
   s <- string
   c <- lmap (take 1 . drop (length s)) (exact ":")
@@ -68,7 +68,7 @@ pair = do
   pure (s ++ c ++ v)
 
 -- array = "[" elements "]" | "[" "]" ;
-array :: FR String String
+array :: Reflective String String
 array =
   labelled
     [ ( "'[' elements ']'",
@@ -82,7 +82,7 @@ array =
     ]
 
 -- elements = value ',' elements | value ;
-elements :: FR String String
+elements :: Reflective String String
 elements =
   labelled
     [ ("value", value),
@@ -96,7 +96,7 @@ elements =
     ]
 
 -- value = "f" "a" "l" "s" "e" | string | array | "t" "r" "u" "e" | number | object | "n" "u" "l" "l" ;
-value :: FR String String
+value :: Reflective String String
 value =
   labelled
     [ ("false", lmap (take 5) (exact "false")),
@@ -109,7 +109,7 @@ value =
     ]
 
 -- string = "\"" "\"" | "\"" chars "\"" ;
-string :: FR String String
+string :: Reflective String String
 string =
   labelled
     [ ("'\"' '\"'", lmap (take 2) (exact "\"\"")),
@@ -122,7 +122,7 @@ string =
       )
     ]
 
-string1 :: FR String String
+string1 :: Reflective String String
 string1 =
   labelled
     [ ( "'\"' char_ '\"'",
@@ -143,7 +143,7 @@ string1 =
     ]
 
 -- chars = char_ chars | char_ ;
-chars :: FR String String
+chars :: Reflective String String
 chars =
   labelled
     [ ("char_", (: []) <$> focus _head char_),
@@ -151,7 +151,7 @@ chars =
     ]
 
 -- char_ = digit | unescapedspecial | letter | escapedspecial ;
-char_ :: FR Char Char
+char_ :: Reflective Char Char
 char_ =
   labelled
     [ ("letter", letter),
@@ -161,15 +161,15 @@ char_ =
     ]
 
 -- letter = "y" | "c" | "K" | "T" | "s" | "N" | "b" | "S" | "R" | "Y" | "C" | "B" | "h" | "J" | "u" | "Q" | "d" | "k" | "t" | "V" | "a" | "x" | "G" | "v" | "D" | "m" | "F" | "w" | "i" | "n" | "L" | "p" | "q" | "W" | "A" | "X" | "I" | "O" | "l" | "P" | "H" | "e" | "f" | "o" | "j" | "Z" | "g" | "E" | "r" | "M" | "z" | "U" ;
-letter :: FR Char Char
+letter :: Reflective Char Char
 letter = oneof (map (\c -> token c >> exact c) (['a' .. 'z'] ++ ['A' .. 'Z']))
 
 -- unescapedspecial = "/" | "+" | ":" | "@" | "$" | "!" | "'" | "(" | "," | "." | ")" | "-" | "#" | "_" | ... "%" | "=" | ">" | "<" | "{" | "}" | "^" | "*" | "|" | ";" | " " ; -- NOTE: I had to add some things
-unescapedspecial :: FR Char Char
+unescapedspecial :: Reflective Char Char
 unescapedspecial = oneof (map (\c -> token c >> exact c) ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_', '%', '=', '>', '<', '{', '}', '^', '*', '|', ';', ' '])
 
 -- escapedspecial = "\\b" | "\\n" | "\\r" | "\\/" | "\\u" hextwobyte | "\\\\" | "\\t" | "\\\"" | "\\f" ;
-escapedspecial :: FR Char Char
+escapedspecial :: Reflective Char Char
 escapedspecial =
   labelled
     [ ("'\\b'", exact '\b'),
@@ -184,7 +184,7 @@ escapedspecial =
     ]
 
 -- hextwobyte = hexdigit hexdigit hexdigit hexdigit ;
-hextwobyte :: FR Char Char
+hextwobyte :: Reflective Char Char
 hextwobyte = comap (\c -> if c == '\"' then Nothing else Just c) $ do
   a <- lmap ((!! 0) . printf "%04X" . ord) hexdigit
   b <- lmap ((!! 1) . printf "%04X" . ord) hexdigit
@@ -193,15 +193,15 @@ hextwobyte = comap (\c -> if c == '\"' then Nothing else Just c) $ do
   pure (chr (16 * 16 * 16 * digitToInt a + 16 * 16 * digitToInt b + 16 * digitToInt c + digitToInt d))
 
 -- hexdigit = hexletter | digit ;
-hexdigit :: FR Char Char
+hexdigit :: Reflective Char Char
 hexdigit = labelled [("hexletter", hexletter), ("digit", digit)]
 
 -- hexletter = "f" | "e" | "F" | "A" | "D" | "a" | "B" | "d" | "E" | "c" | "b" | "C" ;
-hexletter :: FR Char Char
+hexletter :: Reflective Char Char
 hexletter = oneof (map (\c -> token c >> exact c) ['f', 'e', 'F', 'A', 'D', 'a', 'B', 'd', 'E', 'c', 'b', 'C'])
 
 -- number = int_ frac exp | int_ frac | int_ exp | int_ ;
-number :: FR String String
+number :: Reflective String String
 number =
   labelled
     [ ("int_", int_),
@@ -227,7 +227,7 @@ number =
     ]
 
 -- int_ = nonzerodigit digits | "-" digit digits | digit | "-" digit ;
-int_ :: FR String String
+int_ :: Reflective String String
 int_ =
   labelled
     [ ("nonzero digits", (:) <$> focus _head nonzerodigit <*> focus _tail digits),
@@ -241,11 +241,11 @@ int_ =
     ]
 
 -- frac = "." digits ;
-frac :: FR String String
+frac :: Reflective String String
 frac = label "'.' digits" >> (:) <$> focus _head (exact '.') <*> focus _tail digits
 
 -- exp = e digits ;
-expo :: FR String String
+expo :: Reflective String String
 expo = label "e digits" >> (++) <$> comap (fmap fst . splite) e <*> comap (fmap snd . splite) digits
   where
     splite ('e' : '+' : xs) = Just (['e', '+'], xs)
@@ -257,7 +257,7 @@ expo = label "e digits" >> (++) <$> comap (fmap fst . splite) e <*> comap (fmap 
     splite _ = Nothing
 
 -- digits = digit digits | digit ;
-digits :: FR String String
+digits :: Reflective String String
 digits =
   labelled
     [ ("digit", (: []) <$> focus _head digit),
@@ -265,17 +265,17 @@ digits =
     ]
 
 -- digit = nonzerodigit | "0" ;
-digit :: FR Char Char
+digit :: Reflective Char Char
 digit =
   labelled [("nonzerodigit", nonzerodigit), ("'0'", exact '0')]
 
 -- nonzerodigit = "3" | "4" | "7" | "8" | "1" | "9" | "5" | "6" | "2" ;
-nonzerodigit :: FR Char Char
+nonzerodigit :: Reflective Char Char
 nonzerodigit =
   oneof (map (\c -> token c >> exact c) ['1', '2', '3', '4', '5', '6', '7', '8', '9'])
 
 -- e = "e" | "E" | "e" "-" | "E" "-" | "E" "+" | "e" "+" ;
-e :: FR String String
+e :: Reflective String String
 e =
   labelled
     [ ("'e'", lmap (take 1) (exact "e")),
@@ -286,7 +286,7 @@ e =
       ("'E+'", lmap (take 2) (exact "E+"))
     ]
 
-package :: FR String String
+package :: Reflective String String
 package =
   obj
     [ ("name", str),

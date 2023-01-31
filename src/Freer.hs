@@ -59,10 +59,10 @@ data Freer f a where
   Return :: a -> Freer f a
   Bind :: f a -> (a -> Freer f c) -> Freer f c
 
-type FR b = Freer (Refl b)
+type Reflective b = Freer (Refl b)
 
 data Refl b a where
-  Pick :: [(Int, Maybe String, FR b a)] -> Refl b a
+  Pick :: [(Int, Maybe String, Reflective b a)] -> Refl b a
   ChooseInteger :: (Integer, Integer) -> Refl Integer Integer
   Lmap :: (c -> d) -> Refl d a -> Refl c a
   Prune :: Refl b a -> Refl (Maybe b) a
@@ -71,34 +71,34 @@ data Refl b a where
 
 -- Typeclass Instances Combinators
 
-instance Functor (FR b) where
+instance Functor (Reflective b) where
   fmap f (Return x) = Return (f x)
   fmap f (Bind u g) = Bind u (fmap f . g)
 
-instance Applicative (FR b) where
+instance Applicative (Reflective b) where
   pure = return
   (<*>) = ap
 
-instance Monad (FR b) where
+instance Monad (Reflective b) where
   return = Return
   Return x >>= f = f x
   Bind u g >>= f = Bind u (g >=> f)
 
-dimap :: (c -> d) -> (a -> b) -> FR d a -> FR c b
+dimap :: (c -> d) -> (a -> b) -> Reflective d a -> Reflective c b
 dimap _ g (Return a) = Return (g a)
 dimap f g (Bind x h) = Bind (Lmap f x) (dimap f g . h)
 
-lmap :: (c -> d) -> FR d a -> FR c a
+lmap :: (c -> d) -> Reflective d a -> Reflective c a
 lmap f = dimap f id
 
-prune :: FR b a -> FR (Maybe b) a
+prune :: Reflective b a -> Reflective (Maybe b) a
 prune (Return a) = Return a
 prune (Bind x f) = Bind (Prune x) (prune . f)
 
-comap :: (a -> Maybe b) -> FR b v -> FR a v
+comap :: (a -> Maybe b) -> Reflective b v -> Reflective a v
 comap f = lmap f . prune
 
-getbits :: Int -> FR b Int
+getbits :: Int -> Reflective b Int
 getbits w =
   Bind
     ( Pick
@@ -106,47 +106,47 @@ getbits w =
     )
     Return
 
-pick :: [(Int, String, FR b a)] -> FR b a
+pick :: [(Int, String, Reflective b a)] -> Reflective b a
 pick xs = Bind (Pick (map (over _2 Just) xs)) Return
 
-frequency :: [(Int, FR b a)] -> FR b a
+frequency :: [(Int, Reflective b a)] -> Reflective b a
 frequency xs = Bind (Pick (map (\(w, g) -> (w, Nothing, g)) xs)) Return
 
-labelled :: [(String, FR b a)] -> FR b a
+labelled :: [(String, Reflective b a)] -> Reflective b a
 labelled xs = Bind (Pick (map (\(s, g) -> (1, Just s, g)) xs)) Return
 
-oneof :: [FR b a] -> FR b a
+oneof :: [Reflective b a] -> Reflective b a
 oneof xs = Bind (Pick (map (1,Nothing,) xs)) Return
 
-exact :: Eq v => v -> FR v v
+exact :: Eq v => v -> Reflective v v
 exact x = comap (\y -> if y == x then Just y else Nothing) $ oneof [pure x]
 
-choose :: (Int, Int) -> FR Int Int
+choose :: (Int, Int) -> Reflective Int Int
 choose (lo, hi) = labelled [(show i, exact i) | i <- [lo .. hi]]
 
-chooseInteger :: (Integer, Integer) -> FR Integer Integer
+chooseInteger :: (Integer, Integer) -> Reflective Integer Integer
 chooseInteger p = Bind (ChooseInteger p) Return
 
-integer :: FR Int Int
+integer :: Reflective Int Int
 integer = sized $ \n -> labelled [(show i, exact i) | i <- concat (transpose [[0 .. n], reverse [-n .. -1]])]
 
-char :: FR Char Char
+char :: Reflective Char Char
 char = sized $ \n -> labelled [(show i, exact (chr i)) | i <- [ord 'a' .. ord 'a' + n]]
 
-alphaNum :: FR Char Char
+alphaNum :: Reflective Char Char
 alphaNum = labelled [(show c, exact c) | c <- ['a', 'b', 'c', '1', '2', '3']]
 
-bool :: FR Bool Bool
+bool :: Reflective Bool Bool
 bool = oneof [exact True, exact False]
 
-vectorOf :: Eq a => Int -> FR a a -> FR [a] [a]
+vectorOf :: Eq a => Int -> Reflective a a -> Reflective [a] [a]
 vectorOf 0 _ = exact []
 vectorOf n g = do
   x <- focus _head g
   xs <- focus _tail (vectorOf (n - 1) g)
   exact (x : xs)
 
-listOf :: Eq a => FR a a -> FR [a] [a]
+listOf :: Eq a => Reflective a a -> Reflective [a] [a]
 listOf g = sized aux
   where
     aux 0 = exact []
@@ -161,7 +161,7 @@ listOf g = sized aux
           )
         ]
 
-nonEmptyListOf :: Eq a => FR a a -> FR [a] [a]
+nonEmptyListOf :: Eq a => Reflective a a -> Reflective [a] [a]
 nonEmptyListOf g = do
   x <- focus _head g
   xs <- focus _tail (sized aux)
@@ -179,27 +179,27 @@ nonEmptyListOf g = do
           )
         ]
 
-fwd :: FR c a -> FR Void a
+fwd :: Reflective c a -> Reflective Void a
 fwd = lmap (\case {})
 
-focus :: Getting (First u') s u' -> FR u' v -> FR s v
+focus :: Getting (First u') s u' -> Reflective u' v -> Reflective s v
 focus = comap . preview
 
-resize :: Int -> FR b a -> FR b a
+resize :: Int -> Reflective b a -> Reflective b a
 resize _ (Return x) = Return x
 resize w (Bind x f) = Bind (Resize w x) (resize w . f)
 
-sized :: (Int -> FR b a) -> FR b a
+sized :: (Int -> Reflective b a) -> Reflective b a
 sized = Bind GetSize
 
--- suchThat :: FR a a -> (a -> Bool) -> FR a a
+-- suchThat :: Reflective a a -> (a -> Bool) -> Reflective a a
 -- g `suchThat` p = comap (\x -> if p x then Just x else Nothing) aux
 --   where
 --     aux = do
 --       x <- g
 --       if p x then return x else aux
 
--- suchThatMaybe :: Eq a => FR a a -> (a -> Bool) -> FR (Maybe a) (Maybe a)
+-- suchThatMaybe :: Eq a => Reflective a a -> (a -> Bool) -> Reflective (Maybe a) (Maybe a)
 -- g `suchThatMaybe` p = sized (\n -> try n (2 * n))
 --   where
 --     try m n
@@ -209,23 +209,23 @@ sized = Bind GetSize
 --           if p x then exact (Just x) else try (m + 1) n
 
 -- -- Interpretations
--- derivative :: FR b a -> String -> Maybe (FR b a)
+-- derivative :: Reflective b a -> String -> Maybe (Reflective b a)
 -- derivative (Return _) _ = Nothing
 -- derivative (Bind r f) s = do
 --   x <- drefl r
 --   pure (x >>= f)
 --   where
---     drefl :: Refl b a -> Maybe (FR b a)
+--     drefl :: Refl b a -> Maybe (Reflective b a)
 --     drefl (Pick xs) = do
 --       (_, _, x) <- find ((== Just s) . view _2) xs
 --       pure x
 --     drefl (Lmap g x) = lmap g <$> drefl x
 --     drefl (Prune x) = internaliseMaybe <$> drefl x
 
-gen :: forall d c. FR d c -> Gen c
+gen :: forall d c. Reflective d c -> Gen c
 gen = interp
   where
-    interp :: forall b a. FR b a -> Gen a
+    interp :: forall b a. Reflective b a -> Gen a
     interp (Return x) = pure x
     interp (Bind r f) = interpR r >>= interp . f
 
@@ -237,10 +237,10 @@ gen = interp
     interpR GetSize = QC.getSize
     interpR (Resize n x) = QC.resize n (interpR x)
 
-checkClean :: FR a a -> a -> Bool
+checkClean :: Reflective a a -> a -> Bool
 checkClean g v = (not . null) (interp g v)
   where
-    interp :: FR b a -> b -> [a]
+    interp :: Reflective b a -> b -> [a]
     interp (Return x) _ = return x
     interp (Bind x f) b = interpR x b >>= \y -> interp (f y) b
 
@@ -250,10 +250,10 @@ checkClean g v = (not . null) (interp g v)
     interpR (Prune x) b = maybeToList b >>= \b' -> interpR x b'
     interpR _ _ = error "interpR: clean"
 
-check :: FR a a -> a -> Bool
+check :: Reflective a a -> a -> Bool
 check g v = (not . null) (interp g v Nothing)
   where
-    interp :: FR b a -> b -> Maybe Int -> [a]
+    interp :: Reflective b a -> b -> Maybe Int -> [a]
     interp (Return x) _ _ = return x
     interp (Bind x f) b s = interpR x b s >>= \y -> interp (f y) b s
 
@@ -268,7 +268,7 @@ check g v = (not . null) (interp g v Nothing)
     interpR GetSize _ Nothing = pure 30
     interpR (Resize s x) b _ = interpR x b (Just s)
 
-weighted :: FR b a -> (String -> Int) -> Gen a
+weighted :: Reflective b a -> (String -> Int) -> Gen a
 weighted = aux
   where
     interpR :: Refl b a -> (String -> Int) -> Gen a
@@ -279,13 +279,13 @@ weighted = aux
     interpR GetSize _ = QC.getSize
     interpR (Resize n x) w = QC.resize n (interpR x w)
 
-    aux :: FR b a -> (String -> Int) -> Gen a
+    aux :: Reflective b a -> (String -> Int) -> Gen a
     aux (Return x) _ = pure x
     aux (Bind x f) w = do
       y <- interpR x w
       aux (f y) w
 
-weights :: FR a a -> [a] -> [(String, Int)]
+weights :: Reflective a a -> [a] -> [(String, Int)]
 weights g =
   map (\xs -> (head xs, length xs))
     . group
@@ -293,10 +293,10 @@ weights g =
     . head
     . concatMap (unparse g)
 
-byExample :: FR a a -> [a] -> Gen a
+byExample :: Reflective a a -> [a] -> Gen a
 byExample g xs = weighted g (\s -> fromMaybe 0 (lookup s (weights g xs)))
 
-enum :: FR b a -> [a]
+enum :: Reflective b a -> [a]
 enum = observeAll . aux
   where
     interpR :: Refl b a -> Logic a
@@ -307,13 +307,13 @@ enum = observeAll . aux
     interpR GetSize = error "enum: GetSize"
     interpR (Resize {}) = error "enum: Resize"
 
-    aux :: FR b a -> Logic a
+    aux :: Reflective b a -> Logic a
     aux (Return x) = pure x
     aux (Bind x f) =
       interpR x >>- \y ->
         aux (f y)
 
-regen :: FR b a -> Bits -> Maybe a
+regen :: Reflective b a -> Bits -> Maybe a
 regen rg cs = listToMaybe (fst <$> aux rg (unBits cs) Nothing)
   where
     interpR :: Refl b a -> [Bool] -> Maybe Int -> [(a, [Bool])]
@@ -330,13 +330,13 @@ regen rg cs = listToMaybe (fst <$> aux rg (unBits cs) Nothing)
     interpR GetSize b (Just n) = pure (n, b)
     interpR (Resize n x) b _ = interpR x b (Just n)
 
-    aux :: FR b a -> [Bool] -> Maybe Int -> [(a, [Bool])]
+    aux :: Reflective b a -> [Bool] -> Maybe Int -> [(a, [Bool])]
     aux (Return x) b _ = pure (x, b)
     aux (Bind mx f) b s = do
       (x, b') <- interpR mx b s
       aux (f x) b' s
 
-parse :: FR b a -> [String] -> [(a, [String])]
+parse :: Reflective b a -> [String] -> [(a, [String])]
 parse g v = aux g v Nothing
   where
     search [] = []
@@ -361,13 +361,13 @@ parse g v = aux g v Nothing
     interpR GetSize b _ = pure (30, b)
     interpR (Resize sz x) b _ = interpR x b (Just sz)
 
-    aux :: FR b a -> [String] -> Maybe Int -> [(a, [String])]
+    aux :: Reflective b a -> [String] -> Maybe Int -> [(a, [String])]
     aux (Return x) b _ = pure (x, b)
     aux (Bind mx f) b s = do
       (x, b') <- interpR mx b s
       aux (f x) b' s
 
-choices :: FR a a -> a -> [BitTree]
+choices :: Reflective a a -> a -> [BitTree]
 choices rg v = snd <$> aux rg v Nothing
   where
     interpR :: Refl b a -> b -> Maybe Int -> [(a, BitTree)]
@@ -386,14 +386,14 @@ choices rg v = snd <$> aux rg v Nothing
     interpR GetSize _ (Just n) = pure (n, Choices.empty)
     interpR (Resize n x) b _ = interpR x b (Just n)
 
-    aux :: FR b a -> b -> Maybe Int -> [(a, BitTree)]
+    aux :: Reflective b a -> b -> Maybe Int -> [(a, BitTree)]
     aux (Return x) _ _ = pure (x, Choices.empty)
     aux (Bind mx f) b s = do
       (x, cs) <- interpR mx b s
       (y, cs') <- aux (f x) b s
       pure (y, draw cs +++ cs')
 
-unparse :: FR a a -> a -> [[String]]
+unparse :: Reflective a a -> a -> [[String]]
 unparse rg v = snd <$> aux rg v
   where
     interpR :: Refl b a -> b -> [(a, [String])]
@@ -410,14 +410,14 @@ unparse rg v = snd <$> aux rg v
     interpR GetSize _ = error "unparse: GetSize"
     interpR (Resize {}) _ = error "unparse: Resize"
 
-    aux :: FR b a -> b -> [(a, [String])]
+    aux :: Reflective b a -> b -> [(a, [String])]
     aux (Return x) _ = pure (x, [])
     aux (Bind mx f) b = do
       (x, cs) <- interpR mx b
       (y, cs') <- aux (f x) b
       pure (y, cs ++ cs')
 
-complete :: FR a a -> a -> IO (Maybe a)
+complete :: Reflective a a -> a -> IO (Maybe a)
 complete g v = do
   aux g v >>= \case
     [] -> pure Nothing
@@ -436,7 +436,7 @@ complete g v = do
     interpR GetSize _ = error "complete: GetSize"
     interpR (Resize {}) _ = error "complete: Resize"
 
-    aux :: FR b a -> b -> IO [a]
+    aux :: Reflective b a -> b -> IO [a]
     aux (Return x) _ = pure [x]
     aux (Bind mx f) b = do
       xs <- interpR mx b
@@ -470,7 +470,7 @@ nodeRight :: Tree -> Maybe Tree
 nodeRight (Node _ _ r) = Just r
 nodeRight _ = Nothing
 
-weirdTree :: FR Tree Tree
+weirdTree :: Reflective Tree Tree
 weirdTree = aux (10 :: Int)
   where
     aux n
@@ -486,7 +486,7 @@ weirdTree = aux (10 :: Int)
               exact (Node Leaf 2 Leaf)
             ]
 
-bstFwd :: FR Void Tree
+bstFwd :: Reflective Void Tree
 bstFwd = aux (1, 10)
   where
     aux (lo, hi)
@@ -501,7 +501,7 @@ bstFwd = aux (1, 10)
                 return (Node l x r)
             ]
 
-bst :: FR Tree Tree
+bst :: Reflective Tree Tree
 bst = aux (1, 10)
   where
     aux (lo, hi)
@@ -520,7 +520,7 @@ bst = aux (1, 10)
               )
             ]
 
-hypoTree :: FR Tree Tree
+hypoTree :: Reflective Tree Tree
 hypoTree =
   oneof
     [ exact Leaf,
@@ -538,7 +538,7 @@ data Expr
 
 makePrisms ''Expr
 
-expression :: FR Expr Expr
+expression :: Reflective Expr Expr
 expression = expr (10 :: Int)
   where
     expr n
@@ -570,7 +570,7 @@ expression = expr (10 :: Int)
             ]
     token s = labelled [(s, pure ())]
 
-shrink :: (a -> Bool) -> FR a a -> a -> a
+shrink :: (a -> Bool) -> Reflective a a -> a -> a
 shrink p g =
   fromMaybe (error "shrink: no solution")
     . regen g
@@ -587,19 +587,19 @@ shrink p g =
       let ts' = take 1 . filter (any p . regen g . flatten) . sort . concatMap s $ ts
        in if null ts' || ts' == ts then ts else applyShrinker s ts'
 
-validate :: Show a => FR a a -> IO ()
+validate :: Show a => Reflective a a -> IO ()
 validate g =
   quickCheckWith
     (stdArgs {maxSuccess = 1000, maxSize = 30})
     (forAll (gen g) (check g))
 
-validateChoice :: (Eq a, Show a) => FR a a -> IO ()
+validateChoice :: (Eq a, Show a) => Reflective a a -> IO ()
 validateChoice g =
   quickCheckWith
     (stdArgs {maxSuccess = 1000})
     (forAll (gen g) $ \x -> all ((== Just x) . regen g . flatten) (choices g x))
 
-validateParse :: (Eq a, Show a) => FR a a -> IO ()
+validateParse :: (Eq a, Show a) => Reflective a a -> IO ()
 validateParse g =
   quickCheckWith
     (stdArgs {maxSuccess = 10000})

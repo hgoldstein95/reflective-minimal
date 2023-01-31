@@ -11,8 +11,8 @@ module HeapExample where
 
 import Control.Lens (makePrisms, _2, _3, _Just)
 import Data.List (sort)
-import Freer (FR, lmap)
-import qualified Freer as FR
+import Freer (Reflective, lmap)
+import qualified Freer as Reflective
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)
 
@@ -102,22 +102,22 @@ prop_ToSortedList (h :: Heap Int) =
 --------------------------------------------------------------------------
 -- generators
 
-reflAtLeast :: Maybe Int -> FR Int Int
-reflAtLeast Nothing = FR.integer
-reflAtLeast (Just hi) = FR.sized (\mx -> FR.choose (hi, mx))
+reflAtLeast :: Maybe Int -> Reflective Int Int
+reflAtLeast Nothing = Reflective.integer
+reflAtLeast (Just hi) = Reflective.sized (\mx -> Reflective.choose (hi, mx))
 
-reflHeap :: FR (Heap Int) (Heap Int)
-reflHeap = FR.sized (arbHeap Nothing)
+reflHeap :: Reflective (Heap Int) (Heap Int)
+reflHeap = Reflective.sized (arbHeap Nothing)
   where
     arbHeap mx n =
-      FR.frequency $
-        (1, FR.exact Empty)
+      Reflective.frequency $
+        (1, Reflective.exact Empty)
           : [ ( 7,
                 do
                   my <- greaterThan mx
                   case my of
-                    Nothing -> FR.exact Empty
-                    Just y -> Node y <$> FR.focus (_Node . _2) arbHeap2 <*> FR.focus (_Node . _3) arbHeap2
+                    Nothing -> Reflective.exact Empty
+                    Just y -> Node y <$> Reflective.focus (_Node . _2) arbHeap2 <*> Reflective.focus (_Node . _3) arbHeap2
                       where
                         arbHeap2 = arbHeap (Just y) (n `div` 2)
               )
@@ -128,13 +128,13 @@ reflHeap = FR.sized (arbHeap Nothing)
           lmap
             (\case Empty -> Nothing; Node x _ _ -> Just x)
             ( case v of
-                Nothing -> Just <$> FR.focus _Just FR.integer
-                Just hi -> FR.sized $ \i ->
+                Nothing -> Just <$> Reflective.focus _Just Reflective.integer
+                Just hi -> Reflective.sized $ \i ->
                   if hi > i
-                    then FR.exact Nothing
-                    else Just <$> FR.focus _Just (FR.choose (hi, i))
+                    then Reflective.exact Nothing
+                    else Just <$> Reflective.focus _Just (Reflective.choose (hi, i))
             )
 
 instance Arbitrary (Heap Int) where
-  arbitrary = FR.gen reflHeap
+  arbitrary = Reflective.gen reflHeap
   shrink = genericShrink

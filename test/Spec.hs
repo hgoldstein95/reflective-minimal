@@ -2,20 +2,20 @@
 {-# LANGUAGE LambdaCase #-}
 
 import Data.List (nub)
-import Freer (FR, choices, exact, gen, pick, fix, magic, regen, label, choicesS, regenS, comap)
+import Freer (Reflective, choices, choicesS, comap, exact, fix, gen, label, magic, pick, regen, regenS)
 import Test.QuickCheck (Gen)
 import qualified Test.QuickCheck as QC
 
 data Tree = Leaf | Node Tree Int Tree
   deriving (Show, Eq, Ord)
 
-reflInt :: (Int, Int) -> FR Int Int
+reflInt :: (Int, Int) -> Reflective Int Int
 reflInt (lo, hi) = pick [label (show i) (exact i) | i <- [lo .. hi]]
 
 genInt :: (Int, Int) -> Gen Int
 genInt (lo, hi) = QC.elements [lo .. hi]
 
-reflTree :: FR Tree Tree
+reflTree :: Reflective Tree Tree
 reflTree = fix aux (10 :: Int)
   where
     aux self n
@@ -46,7 +46,7 @@ genBST = aux (1, 10)
                 return (Node l x r)
             ]
 
-reflBST :: FR Tree Tree
+reflBST :: Reflective Tree Tree
 reflBST = fix aux (1, 10)
   where
     aux self (lo, hi)
@@ -61,7 +61,7 @@ reflBST = fix aux (1, 10)
                 return (Node l x r)
             ]
 
-reflBSTgood :: FR Tree Tree
+reflBSTgood :: Reflective Tree Tree
 reflBSTgood = fix aux (1, 10)
   where
     aux self (lo, hi)

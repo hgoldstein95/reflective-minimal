@@ -14,8 +14,8 @@ module ParserExample where
 import Control.Lens (makePrisms, _1, _2, _3)
 import Control.Monad.State
 import Data.List (intersperse, isPrefixOf, stripPrefix)
-import Freer (FR)
-import qualified Freer as FR
+import Freer (Reflective)
+import qualified Freer as Reflective
 import GHC.Generics (Generic)
 import Test.QuickCheck
   ( Arbitrary (..),
@@ -76,7 +76,7 @@ nonEmpty :: Gen [a] -> Gen [a]
 nonEmpty a = suchThat a (not . null)
 
 instance Arbitrary Lang where
-  arbitrary = FR.gen reflLang
+  arbitrary = Reflective.gen reflLang
   shrink = genericShrink
 
 instance Arbitrary Mod where
@@ -337,52 +337,52 @@ size (Lang m f) = sumit sizem m + sumit sizef f
       Or e0 e1 -> 1 + sizee e0 + sizee e1
     sumit sz ls = sum (map sz ls)
 
-reflVar :: FR Var Var
-reflVar = Var <$> FR.focus _Var (FR.nonEmptyListOf FR.alphaNum)
+reflVar :: Reflective Var Var
+reflVar = Var <$> Reflective.focus _Var (Reflective.nonEmptyListOf Reflective.alphaNum)
 
-reflLang :: FR Lang Lang
+reflLang :: Reflective Lang Lang
 reflLang =
   Lang
-    <$> FR.focus (_Lang . _1) (FR.listOf reflMod)
-    <*> FR.focus (_Lang . _2) (FR.listOf reflFunc)
+    <$> Reflective.focus (_Lang . _1) (Reflective.listOf reflMod)
+    <*> Reflective.focus (_Lang . _2) (Reflective.listOf reflFunc)
 
-reflMod :: FR Mod Mod
+reflMod :: Reflective Mod Mod
 reflMod =
   Mod
-    <$> FR.focus (_Mod . _1) (FR.listOf reflVar)
-    <*> FR.focus (_Mod . _2) (FR.listOf reflVar)
+    <$> Reflective.focus (_Mod . _1) (Reflective.listOf reflVar)
+    <*> Reflective.focus (_Mod . _2) (Reflective.listOf reflVar)
 
-reflFunc :: FR Func Func
+reflFunc :: Reflective Func Func
 reflFunc =
   Func
-    <$> FR.focus (_Func . _1) reflVar
-    <*> FR.focus (_Func . _2) (FR.listOf reflExp)
-    <*> FR.focus (_Func . _3) (FR.listOf reflStmt)
+    <$> Reflective.focus (_Func . _1) reflVar
+    <*> Reflective.focus (_Func . _2) (Reflective.listOf reflExp)
+    <*> Reflective.focus (_Func . _3) (Reflective.listOf reflStmt)
 
-reflStmt :: FR Stmt Stmt
+reflStmt :: Reflective Stmt Stmt
 reflStmt =
-  FR.oneof
-    [ Assign <$> FR.focus (_Assign . _1) reflVar <*> FR.focus (_Assign . _2) reflExp,
-      Alloc <$> FR.focus (_Alloc . _1) reflVar <*> FR.focus (_Alloc . _2) reflExp,
-      Return <$> FR.focus _Return reflExp
+  Reflective.oneof
+    [ Assign <$> Reflective.focus (_Assign . _1) reflVar <*> Reflective.focus (_Assign . _2) reflExp,
+      Alloc <$> Reflective.focus (_Alloc . _1) reflVar <*> Reflective.focus (_Alloc . _2) reflExp,
+      Return <$> Reflective.focus _Return reflExp
     ]
 
-reflExp :: FR Exp Exp
-reflExp = FR.sized go
+reflExp :: Reflective Exp Exp
+reflExp = Reflective.sized go
   where
-    go i | i <= 1 = FR.oneof [Bool <$> FR.focus _Bool FR.bool, Int <$> FR.focus _Int FR.integer]
+    go i | i <= 1 = Reflective.oneof [Bool <$> Reflective.focus _Bool Reflective.bool, Int <$> Reflective.focus _Int Reflective.integer]
     go i =
       let g = go (i `div` 2)
-       in FR.frequency
-            [ (1, Bool <$> FR.focus _Bool FR.bool),
-              (1, Int <$> FR.focus _Int FR.integer),
-              (10, Not <$> FR.focus _Not (go (i - 1))),
-              (100, And <$> FR.focus (_And . _1) g <*> FR.focus (_And . _2) g),
-              (100, Or <$> FR.focus (_Or . _1) g <*> FR.focus (_Or . _2) g),
-              (100, Add <$> FR.focus (_Add . _1) g <*> FR.focus (_Add . _2) g),
-              (100, Sub <$> FR.focus (_Sub . _1) g <*> FR.focus (_Sub . _2) g),
-              (100, Mul <$> FR.focus (_Mul . _1) g <*> FR.focus (_Mul . _2) g),
-              (100, Div <$> FR.focus (_Div . _1) g <*> FR.focus (_Div . _2) g)
+       in Reflective.frequency
+            [ (1, Bool <$> Reflective.focus _Bool Reflective.bool),
+              (1, Int <$> Reflective.focus _Int Reflective.integer),
+              (10, Not <$> Reflective.focus _Not (go (i - 1))),
+              (100, And <$> Reflective.focus (_And . _1) g <*> Reflective.focus (_And . _2) g),
+              (100, Or <$> Reflective.focus (_Or . _1) g <*> Reflective.focus (_Or . _2) g),
+              (100, Add <$> Reflective.focus (_Add . _1) g <*> Reflective.focus (_Add . _2) g),
+              (100, Sub <$> Reflective.focus (_Sub . _1) g <*> Reflective.focus (_Sub . _2) g),
+              (100, Mul <$> Reflective.focus (_Mul . _1) g <*> Reflective.focus (_Mul . _2) g),
+              (100, Div <$> Reflective.focus (_Div . _1) g <*> Reflective.focus (_Div . _2) g)
             ]
 
 prop_Parse :: Lang -> Bool

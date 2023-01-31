@@ -9,8 +9,8 @@ module Bound5Example where
 import Control.Lens (makePrisms, _1, _2, _3, _4, _5)
 import Data.Bits (shiftL)
 import Data.Int (Int16)
-import Freer (FR, lmap)
-import qualified Freer as FR
+import Freer (Reflective, lmap)
+import qualified Freer as Reflective
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)
 
@@ -37,10 +37,10 @@ size :: T -> Int
 size = length . concat . toList
 
 instance Arbitrary T where
-  arbitrary = FR.gen reflT
+  arbitrary = Reflective.gen reflT
   shrink = genericShrink
 
-int16 :: FR Int16 Int16
+int16 :: Reflective Int16 Int16
 int16 =
   let mn = (minBound :: Int16)
       mx = (maxBound :: Int16)
@@ -51,7 +51,7 @@ int16 =
       -- How many bits are needed to represent this type?
       -- (This number is an upper bound, not exact.)
       bits = ilog2 (toInteger mx - toInteger mn + 1)
-   in FR.sized $ \k ->
+   in Reflective.sized $ \k ->
         let -- Reach maximum size by k=80, or quicker for small integer types
             power = ((bits `max` 40) * k) `div` 80
 
@@ -60,13 +60,13 @@ int16 =
             --   * clamp power to 'bits', in case k is a huge number
             lo = toInteger mn `max` (-1 `shiftL` (power `min` bits))
             hi = toInteger mx `min` (1 `shiftL` (power `min` bits))
-         in lmap fromIntegral $ fromInteger <$> FR.chooseInteger (lo, hi)
+         in lmap fromIntegral $ fromInteger <$> Reflective.chooseInteger (lo, hi)
 
-reflT :: FR T T
+reflT :: Reflective T T
 reflT =
   T
-    <$> FR.focus (_T . _1) (FR.listOf int16)
-    <*> FR.focus (_T . _2) (FR.listOf int16)
-    <*> FR.focus (_T . _3) (FR.listOf int16)
-    <*> FR.focus (_T . _4) (FR.listOf int16)
-    <*> FR.focus (_T . _5) (FR.listOf int16)
+    <$> Reflective.focus (_T . _1) (Reflective.listOf int16)
+    <*> Reflective.focus (_T . _2) (Reflective.listOf int16)
+    <*> Reflective.focus (_T . _3) (Reflective.listOf int16)
+    <*> Reflective.focus (_T . _4) (Reflective.listOf int16)
+    <*> Reflective.focus (_T . _5) (Reflective.listOf int16)

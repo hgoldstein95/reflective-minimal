@@ -5,7 +5,7 @@ module Hypothesis where
 import qualified Bound5Example as Bound5
 import qualified CalcExample as Calc
 import Control.Monad (replicateM)
-import Freer (FR, gen, validate)
+import Freer (Reflective, gen, validate)
 import qualified Freer
 import qualified HeapExample as Heap
 import qualified ListExample as List
@@ -33,11 +33,11 @@ counterExampleGeneric p inv =
     Failure {failingTestCase = [v]} -> pure (read v)
     _ -> error "counterExampleGeneric: no counterexample found"
 
-counterExampleFR :: (Eq a, Show a, Read a) => FR a a -> (a -> Bool) -> IO a
-counterExampleFR g p =
+counterExampleReflective :: (Eq a, Show a, Read a) => Reflective a a -> (a -> Bool) -> IO a
+counterExampleReflective g p =
   quickCheckWithResult (stdArgs {chatty = False, maxSuccess = 10000, maxSize = 30, maxShrinks = 1}) (propertyForAllShrinkShow (gen g) (\v -> let v' = Freer.shrink (not . p) g v in [v' | v /= v']) ((: []) . show) p) >>= \case
     Failure {failingTestCase = [v]} -> pure (read v)
-    _ -> error "counterExampleFR: no counterexample found"
+    _ -> error "counterExampleReflective: no counterexample found"
 
 average :: [Int] -> Double
 average xs = fromIntegral (sum xs) / fromIntegral (length xs)
@@ -47,11 +47,11 @@ stddev xs = sqrt (sum [(fromIntegral x - mean) ** 2 | x <- xs] / fromIntegral (l
   where
     mean = average xs
 
-experiment :: (Arbitrary a, Eq a, Show a, Read a) => (a -> Bool) -> (a -> Bool) -> FR a a -> (a -> Int) -> Int -> IO ()
+experiment :: (Arbitrary a, Eq a, Show a, Read a) => (a -> Bool) -> (a -> Bool) -> Reflective a a -> (a -> Int) -> Int -> IO ()
 experiment prop inv refl size n = do
   x <- measure $ counterExampleNone prop
   y <- measure $ counterExampleGeneric prop inv
-  z <- measure $ counterExampleFR refl prop
+  z <- measure $ counterExampleReflective refl prop
   putStrLn $ x ++ " & " ++ y ++ " & " ++ z
   where
     measure x = do

@@ -5,7 +5,7 @@
 
 module ListExample where
 
-import Freer (FR, gen, integer, listOf, lmap)
+import Freer (Reflective, gen, integer, listOf, lmap)
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)
 
@@ -18,7 +18,7 @@ newtype IntList = IntList [Int]
 size :: IntList -> Int
 size (IntList xs) = length xs
 
-reflList :: FR IntList IntList
+reflList :: Reflective IntList IntList
 reflList = IntList <$> lmap (\case IntList xs -> xs) (listOf integer)
 
 invariant :: b -> Bool

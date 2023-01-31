@@ -11,8 +11,8 @@ module CalcExample where
 
 import Control.Lens (makePrisms, _1, _2)
 import Data.Maybe (isJust)
-import Freer (FR)
-import qualified Freer as FR
+import Freer (Reflective)
+import qualified Freer as Reflective
 import GHC.Generics (Generic)
 import Test.QuickCheck
   ( Arbitrary (..),
@@ -37,27 +37,27 @@ eval (Div e0 e1) =
         then Nothing
         else div <$> eval e0 <*> e
 
-reflCalc :: FR Exp Exp
-reflCalc = FR.sized mkM
+reflCalc :: Reflective Exp Exp
+reflCalc = Reflective.sized mkM
   where
-    mkM 0 = C <$> FR.focus _C FR.integer
+    mkM 0 = C <$> Reflective.focus _C Reflective.integer
     mkM n =
-      FR.frequency
-        [ (1, C <$> FR.focus _C FR.integer),
+      Reflective.frequency
+        [ (1, C <$> Reflective.focus _C Reflective.integer),
           ( n - 1,
             Add
-              <$> FR.focus (_Add . _1) (mkM (n `div` 2))
-              <*> FR.focus (_Add . _2) (mkM (n `div` 2))
+              <$> Reflective.focus (_Add . _1) (mkM (n `div` 2))
+              <*> Reflective.focus (_Add . _2) (mkM (n `div` 2))
           ),
           ( n - 1,
             Div
-              <$> FR.focus (_Div . _1) (mkM (n `div` 2))
-              <*> FR.focus (_Div . _2) (mkM (n `div` 2))
+              <$> Reflective.focus (_Div . _1) (mkM (n `div` 2))
+              <*> Reflective.focus (_Div . _2) (mkM (n `div` 2))
           )
         ]
 
 instance Arbitrary Exp where
-  arbitrary = FR.gen reflCalc
+  arbitrary = Reflective.gen reflCalc
   shrink = genericShrink
 
 prop_div :: Exp -> Bool
