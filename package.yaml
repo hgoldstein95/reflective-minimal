@@ -28,6 +28,7 @@ dependencies:
 - mtl
 - logict
 - template-haskell
+- directory
 
 ghc-options:
 - -Wall

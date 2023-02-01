@@ -39,11 +39,11 @@ import Control.Exception (SomeException)
 import Control.Lens (Getting, makePrisms, over, preview, view, _1, _2, _3, _head, _tail)
 import Control.Monad (ap, guard, (>=>))
 import Control.Monad.Logic (Logic, MonadLogic ((>>-)), observeAll)
-import Data.Bifunctor (Bifunctor (second))
+import Data.Bifunctor (Bifunctor (..))
 import Data.Char (chr, ord)
 import Data.Foldable (asum)
-import Data.List (group, minimumBy, nub, sort, transpose)
-import Data.Maybe (fromMaybe, listToMaybe, maybeToList)
+import Data.List (group, minimumBy, sort, transpose)
+import Data.Maybe (fromJust, fromMaybe, listToMaybe, mapMaybe, maybeToList)
 import Data.Monoid (First)
 import Data.Ord (comparing)
 import Data.Void (Void)
@@ -240,33 +240,48 @@ check g v = (not . null) (interp g v Nothing)
     interpR GetSize _ Nothing = pure 30
     interpR (Resize s x) b _ = interpR x b (Just s)
 
-weighted :: Reflective b a -> (String -> Int) -> Gen a
-weighted = aux
+weighted :: Reflective b a -> Bool -> (String -> Int) -> Gen a
+weighted g inv ws = aux g ws 100
   where
-    interpR :: R b a -> (String -> Int) -> Gen a
-    interpR (Pick xs) w = QC.frequency (map (\(_, s, x) -> (maybe 1 w s, aux x w)) xs)
-    interpR (ChooseInteger (lo, hi)) _ = QC.chooseInteger (lo, hi)
-    interpR (Lmap _ x) w = interpR x w
-    interpR (Prune x) w = interpR x w
-    interpR GetSize _ = QC.getSize
-    interpR (Resize n x) w = QC.resize n (interpR x w)
+    interpR :: R b a -> (String -> Int) -> Int -> Gen a
+    interpR (Pick xs) w 0 = aux (view _3 (head xs)) w 0
+    interpR (Pick xs) w s =
+      case filter ((> 0) . fst) . maybeInv $ map (\(_, l, x) -> (maybe 1 w l, aux x w (s - 1))) xs of
+        [] -> QC.oneof (map (\(_, _, x) -> aux x w (s - 1)) xs)
+        gs -> QC.frequency gs
+    interpR (ChooseInteger (lo, hi)) _ _ = QC.chooseInteger (lo, hi)
+    interpR (Lmap _ x) w s = interpR x w s
+    interpR (Prune x) w s = interpR x w s
+    interpR GetSize _ _ = QC.getSize
+    interpR (Resize n x) w s = QC.resize n (interpR x w s)
 
-    aux :: Reflective b a -> (String -> Int) -> Gen a
-    aux (Return x) _ = pure x
-    aux (Bind x f) w = do
-      y <- interpR x w
-      aux (f y) w
+    maybeInv :: [(Int, d)] -> [(Int, d)]
+    maybeInv x =
+      if inv
+        then
+          let m = maximum (map fst x)
+           in map (first (m -)) x
+        else x
+
+    aux :: Reflective b a -> (String -> Int) -> Int -> Gen a
+    aux (Return x) _ _ = pure x
+    aux (Bind x f) w s = do
+      y <- interpR x w s
+      aux (f y) w s
 
 weights :: Reflective a a -> [a] -> [(String, Int)]
 weights g =
   map (\xs -> (head xs, length xs))
     . group
     . sort
-    . head
-    . concatMap (unparse g)
+    . concat
+    . mapMaybe (unparse g)
 
 byExample :: Reflective a a -> [a] -> Gen a
-byExample g xs = weighted g (\s -> fromMaybe 0 (lookup s (weights g xs)))
+byExample g xs = weighted g False (\s -> fromMaybe 0 (lookup s (weights g xs)))
+
+byExampleInv :: Reflective a a -> [a] -> Gen a
+byExampleInv g xs = weighted g True (\s -> fromMaybe 0 (lookup s (weights g xs)))
 
 enum :: Reflective b a -> [a]
 enum = observeAll . aux
@@ -365,11 +380,11 @@ choices rg v = snd <$> aux rg v Nothing
       (y, cs') <- aux (f x) b s
       pure (y, draw cs +++ cs')
 
-unparse :: Reflective a a -> a -> [[String]]
-unparse rg v = snd <$> aux rg v
+unparse :: Reflective a a -> a -> Maybe [String]
+unparse rg v = listToMaybe (snd <$> aux rg v)
   where
     interpR :: R b a -> b -> [(a, [String])]
-    interpR (Pick xs) b = take 1 . reverse $ do
+    interpR (Pick xs) b = do
       (_, ms, x) <- xs
       case ms of
         Nothing -> aux x b
@@ -581,7 +596,7 @@ main :: IO ()
 main = do
   print =<< QC.generate (gen weirdTree)
   print =<< QC.generate (gen bstFwd)
-  let ss = head . nub $ unparse bst (Node Leaf 1 (Node Leaf 2 Leaf))
+  let ss = fromJust $ unparse bst (Node Leaf 1 (Node Leaf 2 Leaf))
   print ss
   print (parse bst ss)
   let n l = Node l 0
@@ -592,7 +607,6 @@ main = do
   print $ choices hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
   print $ choices bst (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
   print $ map fst $ filter (null . snd) $ parse expression (words "( 1 + 2 ) * ( 3 + 3 * 4 )")
-  print $ take 3 $ map concat $ unparse expression (Mul (Add (Num 1) (Num 2)) (Num 3))
   let _hole_ = undefined
   print =<< complete bst (Node _hole_ 5 _hole_)
   print =<< complete bst (Node (Node _hole_ 2 Leaf) 5 (Node _hole_ 7 _hole_))

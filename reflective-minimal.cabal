@@ -46,6 +46,7 @@ library
       QuickCheck
     , base >=4.7 && <5
     , data-default
+    , directory
     , lens
     , logict
     , mtl
@@ -64,6 +65,7 @@ executable json-exe
       QuickCheck
     , base >=4.7 && <5
     , data-default
+    , directory
     , lens
     , logict
     , mtl
@@ -83,6 +85,7 @@ executable reflective-minimal-exe
       QuickCheck
     , base >=4.7 && <5
     , data-default
+    , directory
     , lens
     , logict
     , mtl
@@ -103,6 +106,7 @@ test-suite reflective-minimal-test
       QuickCheck
     , base >=4.7 && <5
     , data-default
+    , directory
     , hspec
     , lens
     , logict

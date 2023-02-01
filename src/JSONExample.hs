@@ -1,8 +1,10 @@
 module JSONExample where
 
 import Control.Lens (_head, _tail)
-import Data.Char
-import Freer
+import Data.Bits (xor)
+import Data.Char (chr, digitToInt, ord)
+import Data.Foldable (Foldable (foldl'))
+import Freer (Reflective, comap, exact, focus, labelled, lmap)
 import Text.Printf (printf)
 
 token :: Char -> Reflective b ()
@@ -19,16 +21,21 @@ start =
       ("object", object)
     ]
 
+{-# INLINE (>>-) #-}
+(>>-) :: Reflective String String -> (String -> Reflective String String) -> Reflective String String
+p >>- f = do
+  x <- p
+  lmap (drop (length x)) (f x)
+
 -- object = "{" "}" | "{" members "}" ;
 object :: Reflective String String
 object =
   labelled
     [ ( "'{' members '}'",
-        do
-          b1 <- lmap (take 1) (exact "{")
-          ms <- lmap (drop 1) members
-          b2 <- lmap (take 1 . drop (1 + length ms)) (exact "}")
-          pure (b1 ++ ms ++ b2)
+        lmap (take 1) (exact "{") >>- \b1 ->
+          members >>- \ms ->
+            lmap (take 1) (exact "}") >>- \b2 ->
+              pure (b1 ++ ms ++ b2)
       ),
       ("'{' '}'", lmap (take 2) (exact "{}"))
     ]
@@ -39,34 +46,32 @@ members =
   labelled
     [ ("pair", pair),
       ( "pair ',' members",
-        do
-          p <- pair
-          c <- lmap (take 1 . drop (length p)) (exact ",")
-          ps <- lmap (drop (length p + 1)) members
-          pure (p ++ c ++ ps)
+        pair >>- \p ->
+          lmap (take 1) (exact ",") >>- \c ->
+            members >>- \ps ->
+              pure (p ++ c ++ ps)
       )
     ]
 
 -- pair = string ':' value ;
 pair :: Reflective String String
-pair = do
-  s <- string
-  c <- lmap (take 1 . drop (length s)) (exact ":")
-  v <- lmap (drop (length s + 1)) value
-  pure (s ++ c ++ v)
+pair =
+  string >>- \s ->
+    lmap (take 1) (exact ":") >>- \c ->
+      value >>- \v ->
+        pure (s ++ c ++ v)
 
 -- array = "[" elements "]" | "[" "]" ;
 array :: Reflective String String
 array =
   labelled
-    [ ( "'[' elements ']'",
-        do
-          b1 <- lmap (take 1) (exact "[")
-          ms <- lmap (drop 1) elements
-          b2 <- lmap (take 1 . drop (1 + length ms)) (exact "]")
-          pure (b1 ++ ms ++ b2)
-      ),
-      ("'[' ']'", lmap (take 2) (exact "[]"))
+    [ ("'[' ']'", lmap (take 2) (exact "[]")),
+      ( "'[' elements ']'",
+        lmap (take 1) (exact "[") >>- \b1 ->
+          elements >>- \ms ->
+            lmap (take 1) (exact "]") >>- \b2 ->
+              pure (b1 ++ ms ++ b2)
+      )
     ]
 
 -- elements = value ',' elements | value ;
@@ -75,11 +80,10 @@ elements =
   labelled
     [ ("value", value),
       ( "value ',' elements",
-        do
-          el <- value
-          c <- lmap (take 1 . drop (length el)) (exact ",")
-          es <- lmap (drop (length el + 1)) elements
-          pure (el ++ c ++ es)
+        value >>- \el ->
+          lmap (take 1) (exact ",") >>- \c ->
+            elements >>- \es ->
+              pure (el ++ c ++ es)
       )
     ]
 
@@ -102,31 +106,10 @@ string =
   labelled
     [ ("'\"' '\"'", lmap (take 2) (exact "\"\"")),
       ( "'\"' chars '\"'",
-        do
-          q1 <- lmap (take 1) (exact ['"'])
-          cs <- lmap (drop 1) chars
-          q2 <- lmap (take 1 . drop (1 + length cs)) (exact ['"'])
-          pure (q1 ++ cs ++ q2)
-      )
-    ]
-
-string1 :: Reflective String String
-string1 =
-  labelled
-    [ ( "'\"' char_ '\"'",
-        do
-          do
-            q1 <- lmap (take 1) (exact ['"'])
-            c <- lmap (!! 1) char_
-            q2 <- lmap (take 1 . drop 2) (exact ['"'])
-            pure (q1 ++ [c] ++ q2)
-      ),
-      ( "'\"' chars '\"'",
-        do
-          q1 <- lmap (take 1) (exact ['"'])
-          cs <- lmap (drop 1) chars
-          q2 <- lmap (take 1 . drop (1 + length cs)) (exact ['"'])
-          pure (q1 ++ cs ++ q2)
+        lmap (take 1) (exact ['"']) >>- \q1 ->
+          chars >>- \cs ->
+            lmap (take 1) (exact ['"']) >>- \q2 ->
+              pure (q1 ++ cs ++ q2)
       )
     ]
 
@@ -150,11 +133,11 @@ char_ =
 
 -- letter = "y" | "c" | "K" | "T" | "s" | "N" | "b" | "S" | "R" | "Y" | "C" | "B" | "h" | "J" | "u" | "Q" | "d" | "k" | "t" | "V" | "a" | "x" | "G" | "v" | "D" | "m" | "F" | "w" | "i" | "n" | "L" | "p" | "q" | "W" | "A" | "X" | "I" | "O" | "l" | "P" | "H" | "e" | "f" | "o" | "j" | "Z" | "g" | "E" | "r" | "M" | "z" | "U" ;
 letter :: Reflective Char Char
-letter = oneof (map (\c -> token c >> exact c) (['a' .. 'z'] ++ ['A' .. 'Z']))
+letter = labelled (map (\c -> ([c], exact c)) (['a' .. 'z'] ++ ['A' .. 'Z']))
 
 -- unescapedspecial = "/" | "+" | ":" | "@" | "$" | "!" | "'" | "(" | "," | "." | ")" | "-" | "#" | "_" | ... "%" | "=" | ">" | "<" | "{" | "}" | "^" | "*" | "|" | ";" | " " ; -- NOTE: I had to add some things
 unescapedspecial :: Reflective Char Char
-unescapedspecial = oneof (map (\c -> token c >> exact c) ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_', '%', '=', '>', '<', '{', '}', '^', '*', '|', ';', ' '])
+unescapedspecial = labelled (map (\c -> ([c], exact c)) ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_'])
 
 -- escapedspecial = "\\b" | "\\n" | "\\r" | "\\/" | "\\u" hextwobyte | "\\\\" | "\\t" | "\\\"" | "\\f" ;
 escapedspecial :: Reflective Char Char
@@ -186,32 +169,16 @@ hexdigit = labelled [("hexletter", hexletter), ("digit", digit)]
 
 -- hexletter = "f" | "e" | "F" | "A" | "D" | "a" | "B" | "d" | "E" | "c" | "b" | "C" ;
 hexletter :: Reflective Char Char
-hexletter = oneof (map (\c -> token c >> exact c) ['f', 'e', 'F', 'A', 'D', 'a', 'B', 'd', 'E', 'c', 'b', 'C'])
+hexletter = labelled (map (\c -> ([c], exact c)) ['f', 'e', 'F', 'A', 'D', 'a', 'B', 'd', 'E', 'c', 'b', 'C'])
 
 -- number = int_ frac exp | int_ frac | int_ exp | int_ ;
 number :: Reflective String String
 number =
   labelled
     [ ("int_", int_),
-      ( "int_ exp",
-        do
-          i <- int_
-          ex <- lmap (drop (length i)) expo
-          pure (i ++ ex)
-      ),
-      ( "int_ frac",
-        do
-          i <- int_
-          f <- lmap (drop (length i)) frac
-          pure (i ++ f)
-      ),
-      ( "int_ frac exp",
-        do
-          i <- int_
-          f <- lmap (drop (length i)) frac
-          ex <- lmap (drop (length i + length f)) expo
-          pure (i ++ f ++ ex)
-      )
+      ("int_ exp", int_ >>- \i -> expo >>- \ex -> pure (i ++ ex)),
+      ("int_ frac", int_ >>- \i -> frac >>- \f -> pure (i ++ f)),
+      ("int_ frac exp", int_ >>- \i -> frac >>- \f -> expo >>- \ex -> pure (i ++ f ++ ex))
     ]
 
 -- int_ = nonzerodigit digits | "-" digit digits | digit | "-" digit ;
@@ -219,13 +186,13 @@ int_ :: Reflective String String
 int_ =
   labelled
     [ ("nonzero digits", (:) <$> focus _head nonzerodigit <*> focus _tail digits),
-      ("'-' digit digits", (:) <$> focus _head (exact '-') <*> focus _tail ((:) <$> focus _head digit <*> focus _tail digits)),
+      ("digit", (: []) <$> focus _head digit),
       ( "'-' digit",
         (\x y -> x : [y])
           <$> focus _head (exact '-')
           <*> focus (_tail . _head) digit
       ),
-      ("digit", (: []) <$> focus _head digit)
+      ("'-' digit digits", (:) <$> focus _head (exact '-') <*> focus _tail ((:) <$> focus _head digit <*> focus _tail digits))
     ]
 
 -- frac = "." digits ;
@@ -260,7 +227,7 @@ digit =
 -- nonzerodigit = "3" | "4" | "7" | "8" | "1" | "9" | "5" | "6" | "2" ;
 nonzerodigit :: Reflective Char Char
 nonzerodigit =
-  oneof (map (\c -> token c >> exact c) ['1', '2', '3', '4', '5', '6', '7', '8', '9'])
+  labelled (map (\c -> ([c], exact c)) ['1', '2', '3', '4', '5', '6', '7', '8', '9'])
 
 -- e = "e" | "E" | "e" "-" | "E" "-" | "E" "+" | "e" "+" ;
 e :: Reflective String String
@@ -301,6 +268,24 @@ package =
   where
     quote s = "\"" ++ s ++ "\""
     str = string1
+    string1 =
+      labelled
+        [ ( "'\"' char_ '\"'",
+            do
+              do
+                q1 <- lmap (take 1) (exact ['"'])
+                c <- lmap (!! 1) char_
+                q2 <- lmap (take 1 . drop 2) (exact ['"'])
+                pure (q1 ++ [c] ++ q2)
+          ),
+          ( "'\"' chars '\"'",
+            do
+              q1 <- lmap (take 1) (exact ['"'])
+              cs <- lmap (drop 1) chars
+              q2 <- lmap (take 1 . drop (1 + length cs)) (exact ['"'])
+              pure (q1 ++ cs ++ q2)
+          )
+        ]
     obj fields = do
       _ <- lmap (take 1) (exact "{")
       fs <- lmap (drop 1) (aux fields)
@@ -359,3 +344,18 @@ package =
                   pure (el ++ "," ++ es)
               )
             ]
+
+withChecksum :: Reflective String String
+withChecksum = do
+  let a = "{\"payload\":"
+  let b = ",\"checksum\":"
+  let c = "}"
+  _ <- lmap (take (length a)) (exact a)
+  payload <- lmap (drop (length a)) start
+  let checksum = take 8 (show (abs (hash payload)))
+  _ <- lmap (take (length b) . drop (length a + length payload)) (exact b)
+  _ <- lmap (take (length checksum) . drop (length a + length payload + length b)) (exact checksum)
+  _ <- lmap (take (length c) . drop (length a + length payload + length b + length checksum)) (exact c)
+  pure (a ++ payload ++ b ++ checksum ++ c)
+  where
+    hash = foldl' (\h c -> 33 * h `xor` fromEnum c) 5381

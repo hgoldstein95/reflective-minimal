@@ -1,8 +1,20 @@
 module Main (main) where
 
-import Data.List (isInfixOf)
-import Freer hiding (main)
-import JSONExample
+import Control.Monad (replicateM)
+import Data.List (intercalate)
+import Data.Maybe (fromMaybe)
+import Freer (gen, weighted, weights)
+import JSONExample (start)
+import System.Directory (getDirectoryContents)
+import Test.QuickCheck (generate)
+
+-- main :: IO ()
+-- main = getContents >>= putStrLn . shrink (isInfixOf "^4.15.3") package
 
 main :: IO ()
-main = getContents >>= putStrLn . shrink (isInfixOf "^4.15.3") package
+main = do
+  files <- drop 2 <$> getDirectoryContents "analysis/json"
+  jsons <- mapM (readFile . ("analysis/json/" ++)) files
+  let w = weights start jsons
+  writeFile "analysis/weighted.json" . intercalate "\n" =<< replicateM 100 (generate (weighted start False (fromMaybe 0 . (`lookup` w))))
+  writeFile "analysis/unweighted.json" . intercalate "\n" =<< replicateM 100 (generate (gen start))
