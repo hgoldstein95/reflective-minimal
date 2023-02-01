@@ -53,21 +53,23 @@ import qualified Test.QuickCheck as QC
 
 -- Core Definitions
 
-type Weight = Rational
-
 data Freer f a where
   Return :: a -> Freer f a
   Bind :: f a -> (a -> Freer f c) -> Freer f c
 
-type Reflective b = Freer (Refl b)
+type Choice = Maybe String
 
-data Refl b a where
-  Pick :: [(Int, Maybe String, Reflective b a)] -> Refl b a
-  ChooseInteger :: (Integer, Integer) -> Refl Integer Integer
-  Lmap :: (c -> d) -> Refl d a -> Refl c a
-  Prune :: Refl b a -> Refl (Maybe b) a
-  GetSize :: Refl b Int
-  Resize :: Int -> Refl b a -> Refl b a
+type Weight = Int
+
+data R b a where
+  Pick :: [(Weight, Choice, Reflective b a)] -> R b a
+  Lmap :: (c -> d) -> R d a -> R c a
+  Prune :: R b a -> R (Maybe b) a
+  ChooseInteger :: (Integer, Integer) -> R Integer Integer
+  GetSize :: R b Int
+  Resize :: Int -> R b a -> R b a
+
+type Reflective b = Freer (R b)
 
 -- Typeclass Instances Combinators
 
@@ -192,36 +194,6 @@ resize w (Bind x f) = Bind (Resize w x) (resize w . f)
 sized :: (Int -> Reflective b a) -> Reflective b a
 sized = Bind GetSize
 
--- suchThat :: Reflective a a -> (a -> Bool) -> Reflective a a
--- g `suchThat` p = comap (\x -> if p x then Just x else Nothing) aux
---   where
---     aux = do
---       x <- g
---       if p x then return x else aux
-
--- suchThatMaybe :: Eq a => Reflective a a -> (a -> Bool) -> Reflective (Maybe a) (Maybe a)
--- g `suchThatMaybe` p = sized (\n -> try n (2 * n))
---   where
---     try m n
---       | m > n = exact Nothing
---       | otherwise = do
---           x <- comap _ (resize m g)
---           if p x then exact (Just x) else try (m + 1) n
-
--- -- Interpretations
--- derivative :: Reflective b a -> String -> Maybe (Reflective b a)
--- derivative (Return _) _ = Nothing
--- derivative (Bind r f) s = do
---   x <- drefl r
---   pure (x >>= f)
---   where
---     drefl :: Refl b a -> Maybe (Reflective b a)
---     drefl (Pick xs) = do
---       (_, _, x) <- find ((== Just s) . view _2) xs
---       pure x
---     drefl (Lmap g x) = lmap g <$> drefl x
---     drefl (Prune x) = internaliseMaybe <$> drefl x
-
 gen :: forall d c. Reflective d c -> Gen c
 gen = interp
   where
@@ -229,7 +201,7 @@ gen = interp
     interp (Return x) = pure x
     interp (Bind r f) = interpR r >>= interp . f
 
-    interpR :: forall b a. Refl b a -> Gen a
+    interpR :: forall b a. R b a -> Gen a
     interpR (Pick xs) = QC.frequency [(w, gen x) | (w, _, x) <- xs]
     interpR (Lmap _ x) = interpR x
     interpR (Prune x) = interpR x
@@ -244,7 +216,7 @@ checkClean g v = (not . null) (interp g v)
     interp (Return x) _ = return x
     interp (Bind x f) b = interpR x b >>= \y -> interp (f y) b
 
-    interpR :: Refl b a -> b -> [a]
+    interpR :: R b a -> b -> [a]
     interpR (Pick xs) b = xs >>= (\(_, _, x) -> interp x b)
     interpR (Lmap f x) b = interpR x (f b)
     interpR (Prune x) b = maybeToList b >>= \b' -> interpR x b'
@@ -257,7 +229,7 @@ check g v = (not . null) (interp g v Nothing)
     interp (Return x) _ _ = return x
     interp (Bind x f) b s = interpR x b s >>= \y -> interp (f y) b s
 
-    interpR :: Refl b a -> b -> Maybe Int -> [a]
+    interpR :: R b a -> b -> Maybe Int -> [a]
     interpR (Pick xs) b s = concat [interp x b s | (_, _, x) <- xs]
     interpR (Lmap f x) b s = interpR x (f b) s
     interpR (Prune x) b s = maybeToList b >>= \b' -> interpR x b' s
@@ -271,7 +243,7 @@ check g v = (not . null) (interp g v Nothing)
 weighted :: Reflective b a -> (String -> Int) -> Gen a
 weighted = aux
   where
-    interpR :: Refl b a -> (String -> Int) -> Gen a
+    interpR :: R b a -> (String -> Int) -> Gen a
     interpR (Pick xs) w = QC.frequency (map (\(_, s, x) -> (maybe 1 w s, aux x w)) xs)
     interpR (ChooseInteger (lo, hi)) _ = QC.chooseInteger (lo, hi)
     interpR (Lmap _ x) w = interpR x w
@@ -299,7 +271,7 @@ byExample g xs = weighted g (\s -> fromMaybe 0 (lookup s (weights g xs)))
 enum :: Reflective b a -> [a]
 enum = observeAll . aux
   where
-    interpR :: Refl b a -> Logic a
+    interpR :: R b a -> Logic a
     interpR (Pick xs) = asum (map (aux . view _3) xs)
     interpR (ChooseInteger (lo, hi)) = asum (map pure [lo .. hi])
     interpR (Lmap _ x) = interpR x
@@ -316,7 +288,7 @@ enum = observeAll . aux
 regen :: Reflective b a -> Bits -> Maybe a
 regen rg cs = listToMaybe (fst <$> aux rg (unBits cs) Nothing)
   where
-    interpR :: Refl b a -> [Bool] -> Maybe Int -> [(a, [Bool])]
+    interpR :: R b a -> [Bool] -> Maybe Int -> [(a, [Bool])]
     interpR (Pick xs) b s = do
       let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
       (bs, (_, _, x)) <- zip (listBits numBits) xs
@@ -343,7 +315,7 @@ parse g v = aux g v Nothing
     search xs = (: []) . minimumBy (comparing (length . snd)) $ xs
     -- search = take 1
 
-    interpR :: Refl b a -> [String] -> Maybe Int -> [(a, [String])]
+    interpR :: R b a -> [String] -> Maybe Int -> [(a, [String])]
     interpR (Pick xs) st sz = search $ do
       (_, ms, x) <- xs
       case ms of
@@ -370,7 +342,7 @@ parse g v = aux g v Nothing
 choices :: Reflective a a -> a -> [BitTree]
 choices rg v = snd <$> aux rg v Nothing
   where
-    interpR :: Refl b a -> b -> Maybe Int -> [(a, BitTree)]
+    interpR :: R b a -> b -> Maybe Int -> [(a, BitTree)]
     interpR (Pick xs) b s = do
       let numBits = ceiling (logBase 2 (fromIntegral (length xs) :: Double))
       (bs, (_, _, x)) <- zip (listBits numBits) xs
@@ -396,7 +368,7 @@ choices rg v = snd <$> aux rg v Nothing
 unparse :: Reflective a a -> a -> [[String]]
 unparse rg v = snd <$> aux rg v
   where
-    interpR :: Refl b a -> b -> [(a, [String])]
+    interpR :: R b a -> b -> [(a, [String])]
     interpR (Pick xs) b = take 1 . reverse $ do
       (_, ms, x) <- xs
       case ms of
@@ -423,7 +395,7 @@ complete g v = do
     [] -> pure Nothing
     xs -> Just <$> QC.generate (QC.elements xs)
   where
-    interpR :: Refl b a -> b -> IO [a]
+    interpR :: R b a -> b -> IO [a]
     interpR (Pick xs) b = concat <$> mapM (\(_, _, x) -> aux x b) xs
     interpR (ChooseInteger (lo, hi)) _ = pure [lo .. hi] -- TODO: Check on this
     interpR (Lmap f x) b = do
