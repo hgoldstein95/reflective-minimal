@@ -9,8 +9,7 @@ import Freer (Reflective, gen, integer, listOf, lmap)
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)
 
---------------------------------------------------------------------------
--- imports
+-- From SmartCheck
 
 newtype IntList = IntList [Int]
   deriving (Generic, Eq, Read, Show)
@@ -24,9 +23,11 @@ reflList = IntList <$> lmap (\case IntList xs -> xs) (listOf integer)
 invariant :: b -> Bool
 invariant = const True
 
+instance Arbitrary IntList where
+  arbitrary = gen reflList -- Modified
+  shrink = genericShrink
+
+-- Reflective Generator
+
 prop_Reverse :: IntList -> Bool
 prop_Reverse (IntList xs) = reverse xs == xs
-
-instance Arbitrary IntList where
-  arbitrary = gen reflList
-  shrink = genericShrink

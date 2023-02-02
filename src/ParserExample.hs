@@ -13,6 +13,11 @@ module ParserExample where
 
 import Control.Lens (makePrisms, _1, _2, _3)
 import Control.Monad.State
+  ( MonadState (state),
+    State,
+    evalState,
+    modify,
+  )
 import Data.List (intersperse, isPrefixOf, stripPrefix)
 import Freer (Reflective)
 import qualified Freer as Reflective
@@ -24,6 +29,8 @@ import Test.QuickCheck
     suchThat,
   )
 import Prelude hiding (showList)
+
+-- From SmartCheck
 
 data Lang = Lang
   { modules :: [Mod],
@@ -76,7 +83,7 @@ nonEmpty :: Gen [a] -> Gen [a]
 nonEmpty a = suchThat a (not . null)
 
 instance Arbitrary Lang where
-  arbitrary = Reflective.gen reflLang
+  arbitrary = Reflective.gen reflLang -- Modified
   shrink = genericShrink
 
 instance Arbitrary Mod where
@@ -314,8 +321,6 @@ runProc ::
   (a, String)
 runProc t f s = let (a, b) = t s in (f a, b)
 
---------------------------------------------------------------------------------
-
 size :: Lang -> Int
 size (Lang m f) = sumit sizem m + sumit sizef f
   where
@@ -336,6 +341,14 @@ size (Lang m f) = sumit sizem m + sumit sizef f
       And e0 e1 -> 1 + sizee e0 + sizee e1
       Or e0 e1 -> 1 + sizee e0 + sizee e1
     sumit sz ls = sum (map sz ls)
+
+prop_Parse :: Lang -> Bool
+prop_Parse e = read' (show' e) == e
+
+invariant :: a -> Bool
+invariant = const True
+
+-- Reflective Generator
 
 reflVar :: Reflective Var Var
 reflVar = Var <$> Reflective.focus _Var (Reflective.nonEmptyListOf Reflective.alphaNum)
@@ -384,9 +397,3 @@ reflExp = Reflective.sized go
               (100, Mul <$> Reflective.focus (_Mul . _1) g <*> Reflective.focus (_Mul . _2) g),
               (100, Div <$> Reflective.focus (_Div . _1) g <*> Reflective.focus (_Div . _2) g)
             ]
-
-prop_Parse :: Lang -> Bool
-prop_Parse e = read' (show' e) == e
-
-invariant :: a -> Bool
-invariant = const True

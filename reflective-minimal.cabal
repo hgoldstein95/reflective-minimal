@@ -36,7 +36,6 @@ library
       ListExample
       PackageJSONExample
       ParserExample
-      PartialProfunctors
       STLCExample
   other-modules:
       Paths_reflective_minimal
