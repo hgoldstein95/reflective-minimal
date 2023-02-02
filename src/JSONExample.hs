@@ -2,6 +2,7 @@ module JSONExample where
 
 import Control.Lens (_head, _tail)
 import Data.Bits (xor)
+import Data.Char (isAlpha, isNumber)
 import Data.Foldable (Foldable (foldl'))
 import Freer
 
@@ -29,13 +30,13 @@ p >>- f = do
 object :: Reflective String String
 object =
   labelled
-    [ ( "'{' members '}'",
+    [ ("'{' '}'", lmap (take 2) (exact "{}")),
+      ( "'{' members '}'",
         lmap (take 1) (exact "{") >>- \b1 ->
           members >>- \ms ->
             lmap (take 1) (exact "}") >>- \b2 ->
               pure (b1 ++ ms ++ b2)
-      ),
-      ("'{' '}'", lmap (take 2) (exact "{}"))
+      )
     ]
 
 -- members = pair | pair ',' members ;
@@ -123,33 +124,32 @@ chars =
 char_ :: Reflective Char Char
 char_ =
   labelled
-    [ ("letter", letter),
-      ("digit", digit),
-      ("unescapedspecial", unescapedspecial),
-      ("escapedspecial", escapedspecial)
+    [ ("letter", comap (\c -> if isAlpha c then Just c else Nothing) letter),
+      ("digit", comap (\c -> if isNumber c then Just c else Nothing) digit),
+      ("unescapedspecial", comap (\c -> if c `elem` unescapedspecials then Just c else Nothing) unescapedspecial),
+      ("escapedspecial", comap (\c -> if c `elem` escapedspecials then Just c else Nothing) escapedspecial)
     ]
+
+letters :: [Char]
+letters = ['a' .. 'z'] ++ ['A' .. 'Z']
 
 -- letter = "y" | "c" | "K" | "T" | "s" | "N" | "b" | "S" | "R" | "Y" | "C" | "B" | "h" | "J" | "u" | "Q" | "d" | "k" | "t" | "V" | "a" | "x" | "G" | "v" | "D" | "m" | "F" | "w" | "i" | "n" | "L" | "p" | "q" | "W" | "A" | "X" | "I" | "O" | "l" | "P" | "H" | "e" | "f" | "o" | "j" | "Z" | "g" | "E" | "r" | "M" | "z" | "U" ;
 letter :: Reflective Char Char
-letter = labelled (map (\c -> ([c], exact c)) (['a' .. 'z'] ++ ['A' .. 'Z']))
+letter = labelled (map (\c -> ([c], exact c)) letters)
+
+unescapedspecials :: [Char]
+unescapedspecials = ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_']
 
 -- unescapedspecial = "/" | "+" | ":" | "@" | "$" | "!" | "'" | "(" | "," | "." | ")" | "-" | "#" | "_"
 unescapedspecial :: Reflective Char Char
-unescapedspecial = labelled (map (\c -> ([c], exact c)) ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_'])
+unescapedspecial = labelled (map (\c -> ([c], exact c)) unescapedspecials)
+
+escapedspecials :: [Char]
+escapedspecials = ['\b', '\n', '\r', '\\', '\t', '\f']
 
 -- escapedspecial = "\\b" | "\\n" | "\\r" | "\\/" | "\\u" hextwobyte | "\\\\" | "\\t" | "\\\"" | "\\f" ;
 escapedspecial :: Reflective Char Char
-escapedspecial =
-  labelled
-    [ ("'\\b'", exact '\b'),
-      ("'\\n'", exact '\n'),
-      ("'\\r'", exact '\r'),
-      ("'\\/'", exact '/'),
-      ("'\\\\'", exact '\\'),
-      ("'\\t'", exact '\t'),
-      ("'\\\"", exact '\"'),
-      ("'\\f'", exact '\f')
-    ]
+escapedspecial = labelled (map (\c -> ([c], exact c)) escapedspecials)
 
 -- NOTE: Skipped unicode handling to simplify implementation
 -- -- hextwobyte = hexdigit hexdigit hexdigit hexdigit ;
@@ -199,15 +199,12 @@ frac = label "'.' digits" >> (:) <$> focus _head (exact '.') <*> focus _tail dig
 
 -- exp = e digits ;
 expo :: Reflective String String
-expo = label "e digits" >> (++) <$> comap (fmap fst . splite) e <*> comap (fmap snd . splite) digits
-  where
-    splite ('e' : '+' : xs) = Just (['e', '+'], xs)
-    splite ('e' : '-' : xs) = Just (['e', '-'], xs)
-    splite ('E' : '+' : xs) = Just (['E', '+'], xs)
-    splite ('E' : '-' : xs) = Just (['E', '-'], xs)
-    splite ('e' : xs) = Just (['e'], xs)
-    splite ('E' : xs) = Just (['E'], xs)
-    splite _ = Nothing
+expo =
+  label "e digits"
+    >> ( e >>- \e' ->
+           digits >>- \d ->
+             pure (e' ++ d)
+       )
 
 -- digits = digit digits | digit ;
 digits :: Reflective String String

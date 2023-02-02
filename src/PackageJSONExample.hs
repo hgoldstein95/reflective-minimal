@@ -226,15 +226,12 @@ frac = label "'.' digits" >> (:) <$> focus _head (exact '.') <*> focus _tail dig
 
 -- exp = e digits ;
 expo :: Reflective String String
-expo = label "e digits" >> (++) <$> comap (fmap fst . splite) e <*> comap (fmap snd . splite) digits
-  where
-    splite ('e' : '+' : xs) = Just (['e', '+'], xs)
-    splite ('e' : '-' : xs) = Just (['e', '-'], xs)
-    splite ('E' : '+' : xs) = Just (['E', '+'], xs)
-    splite ('E' : '-' : xs) = Just (['E', '-'], xs)
-    splite ('e' : xs) = Just (['e'], xs)
-    splite ('E' : xs) = Just (['E'], xs)
-    splite _ = Nothing
+expo =
+  label "e digits"
+    >> ( e >>- \e' ->
+           digits >>- \d ->
+             pure (e' ++ d)
+       )
 
 -- digits = digit digits | digit ;
 digits :: Reflective String String

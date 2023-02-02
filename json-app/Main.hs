@@ -13,5 +13,5 @@ main = do
   files <- drop 2 <$> getDirectoryContents "analysis/json"
   jsons <- mapM (readFile . ("analysis/json/" ++)) files
   let w = weights start jsons
-  writeFile "analysis/weighted.json" . intercalate "\n" =<< replicateM 100 (generate (weighted start False (fromMaybe 0 . (`lookup` w))))
-  writeFile "analysis/unweighted.json" . intercalate "\n" =<< replicateM 100 (generate (gen start))
+  writeFile "analysis/weighted.json" . intercalate "\n" =<< replicateM 1000 (generate (weighted start False (fromMaybe 0 . (`lookup` w))))
+  writeFile "analysis/unweighted.json" . intercalate "\n" =<< replicateM 1000 (generate (gen start))

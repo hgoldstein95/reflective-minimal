@@ -383,28 +383,27 @@ choices rg v = snd <$> aux rg v Nothing
       pure (y, draw cs +++ cs')
 
 unparse :: Reflective a a -> a -> Maybe [String]
-unparse rg v = listToMaybe (snd <$> aux rg v Nothing)
+unparse rg v = snd <$> listToMaybe (aux rg v)
   where
-    interpR :: R b a -> b -> Maybe Int -> [(a, [String])]
-    interpR (Pick xs) b s = do
-      (_, ms, x) <- xs
+    interpR :: R b a -> b -> [(a, [String])]
+    interpR (Pick !xs) !b = do
+      (_, !ms, !x) <- xs
       case ms of
-        Nothing -> aux x b s
-        Just l -> second (l :) <$> aux x b s
-    interpR (ChooseInteger _) b _ = pure (b, [])
-    interpR (Lmap f x) b s = interpR x (f b) s
-    interpR (Prune x) b s = case b of
+        Nothing -> aux x b
+        Just !l -> second (l :) <$> aux x b
+    interpR (ChooseInteger _) !b = pure (b, [])
+    interpR (Lmap !f !x) !b = interpR x (f b)
+    interpR (Prune !x) !b = case b of
       Nothing -> []
-      Just a -> interpR x a s
-    interpR GetSize _ Nothing = pure (30, [])
-    interpR GetSize _ (Just n) = pure (n, [])
-    interpR (Resize n r) b _ = interpR r b (Just n)
+      Just !a -> interpR x a
+    interpR GetSize _ = error "unparse: GetSize"
+    interpR (Resize {}) _ = error "unparse: Resize"
 
-    aux :: Reflective b a -> b -> Maybe Int -> [(a, [String])]
-    aux (Return x) _ _ = pure (x, [])
-    aux (Bind mx f) b s = do
-      (x, cs) <- interpR mx b s
-      (y, cs') <- aux (f x) b s
+    aux :: Reflective b a -> b -> [(a, [String])]
+    aux (Return x) _ = pure (x, [])
+    aux (Bind mx f) b = do
+      (x, cs) <- interpR mx b
+      (y, cs') <- aux (f x) b
       pure (y, cs ++ cs')
 
 complete :: Reflective a a -> a -> IO (Maybe a)
