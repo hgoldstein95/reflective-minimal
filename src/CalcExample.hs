@@ -19,6 +19,8 @@ import Test.QuickCheck
     genericShrink,
   )
 
+-- From SmartCheck
+
 data Exp
   = C Int
   | Add Exp Exp
@@ -37,27 +39,8 @@ eval (Div e0 e1) =
         then Nothing
         else div <$> eval e0 <*> e
 
-reflCalc :: Reflective Exp Exp
-reflCalc = Reflective.sized mkM
-  where
-    mkM 0 = C <$> Reflective.focus _C Reflective.integer
-    mkM n =
-      Reflective.frequency
-        [ (1, C <$> Reflective.focus _C Reflective.integer),
-          ( n - 1,
-            Add
-              <$> Reflective.focus (_Add . _1) (mkM (n `div` 2))
-              <*> Reflective.focus (_Add . _2) (mkM (n `div` 2))
-          ),
-          ( n - 1,
-            Div
-              <$> Reflective.focus (_Div . _1) (mkM (n `div` 2))
-              <*> Reflective.focus (_Div . _2) (mkM (n `div` 2))
-          )
-        ]
-
 instance Arbitrary Exp where
-  arbitrary = Reflective.gen reflCalc
+  arbitrary = Reflective.gen reflCalc -- Modified
   shrink = genericShrink
 
 prop_div :: Exp -> Bool
@@ -86,3 +69,24 @@ size e = case e of
   C _ -> 1
   Add e0 e1 -> 1 + size e0 + size e1
   Div e0 e1 -> 1 + size e0 + size e1
+
+-- Reflective Generator
+
+reflCalc :: Reflective Exp Exp
+reflCalc = Reflective.sized mkM
+  where
+    mkM 0 = C <$> Reflective.focus _C Reflective.integer
+    mkM n =
+      Reflective.frequency
+        [ (1, C <$> Reflective.focus _C Reflective.integer),
+          ( n - 1,
+            Add
+              <$> Reflective.focus (_Add . _1) (mkM (n `div` 2))
+              <*> Reflective.focus (_Add . _2) (mkM (n `div` 2))
+          ),
+          ( n - 1,
+            Div
+              <$> Reflective.focus (_Div . _1) (mkM (n `div` 2))
+              <*> Reflective.focus (_Div . _2) (mkM (n `div` 2))
+          )
+        ]

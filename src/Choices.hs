@@ -120,22 +120,6 @@ subChoices (BTDraw xs bs) = [xs] ++ subChoices xs ++ subChoices (tree bs)
 subChoices (BTBit _ bs) = subChoices (tree bs)
 subChoices _ = error "undefined"
 
--- pickSubTree :: BitTree -> [BitTree]
--- pickSubTree x = filter (< x) . nub . map BitTree . aux . unBitTree $ x
---   where
---     aux :: [BitNode] -> [[BitNode]]
---     aux [] = []
---     aux (Bit _ : bs) = aux bs
---     aux (Draw xs : bs) = aux bs <|> aux xs <|> [xs]
-
--- simplifyDraws :: BitTree -> BitTree
--- simplifyDraws = BitTree . aux . unBitTree
---   where
---     aux :: [BitNode] -> [BitNode]
---     aux [] = []
---     aux (Draw xs : bs) | length xs > 5 = aux xs ++ aux bs
---     aux (b : bs) = b : aux bs
-
 integerToBits :: (Integer, Integer) -> Integer -> [Bool]
 integerToBits (lo, hi) j = ((j < 0) :) . reverse $ aux bitWidth (abs j)
   where

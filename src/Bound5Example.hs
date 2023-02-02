@@ -14,6 +14,8 @@ import qualified Freer as Reflective
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)
 
+-- From SmartCheck
+
 type I = [Int16]
 
 data T = T I I I I I
@@ -37,10 +39,10 @@ size :: T -> Int
 size = length . concat . toList
 
 instance Arbitrary T where
-  arbitrary = Reflective.gen reflT
+  arbitrary = Reflective.gen reflT -- Modified
   shrink = genericShrink
 
-int16 :: Reflective Int16 Int16
+int16 :: Reflective Int16 Int16 -- Borrowed from QuickCheck
 int16 =
   let mn = (minBound :: Int16)
       mx = (maxBound :: Int16)
@@ -61,6 +63,8 @@ int16 =
             lo = toInteger mn `max` (-1 `shiftL` (power `min` bits))
             hi = toInteger mx `min` (1 `shiftL` (power `min` bits))
          in lmap fromIntegral $ fromInteger <$> Reflective.chooseInteger (lo, hi)
+
+-- Reflective Generator
 
 reflT :: Reflective T T
 reflT =

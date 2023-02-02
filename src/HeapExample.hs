@@ -6,9 +6,6 @@
 
 module HeapExample where
 
---------------------------------------------------------------------------
--- imports
-
 import Control.Lens (makePrisms, _2, _3, _Just)
 import Data.List (sort)
 import Freer (Reflective, lmap)
@@ -16,8 +13,7 @@ import qualified Freer as Reflective
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)
 
---------------------------------------------------------------------------
--- skew heaps
+-- From SmartCheck
 
 data Heap a
   = Node a (Heap a) (Heap a)
@@ -76,9 +72,6 @@ toSortedList :: Ord a => Heap a -> [a]
 toSortedList Empty = []
 toSortedList (Node x h1 h2) = x : toList (h1 `merge` h2)
 
---------------------------------------------------------------------------
--- specification
-
 invariant :: Ord a => Heap a -> Bool
 invariant Empty = True
 invariant (Node x h1 h2) = x <=? h1 && x <=? h2 && invariant h1 && invariant h2
@@ -90,21 +83,17 @@ x <=? Node y _ _ = x <= y
 (==?) :: Ord a => Heap a -> [a] -> Bool
 h ==? xs = invariant h && sort (toList h) == sort xs
 
---------------------------------------------------------------------------
--- properties
-
 prop_ToSortedList :: Heap Int -> Bool
 prop_ToSortedList (h :: Heap Int) =
   h ==? xs && xs == sort xs
   where
     xs = toSortedList h
 
---------------------------------------------------------------------------
--- generators
+instance Arbitrary (Heap Int) where
+  arbitrary = Reflective.gen reflHeap -- Modified
+  shrink = genericShrink
 
-reflAtLeast :: Maybe Int -> Reflective Int Int
-reflAtLeast Nothing = Reflective.integer
-reflAtLeast (Just hi) = Reflective.sized (\mx -> Reflective.choose (hi, mx))
+-- Reflective Generator
 
 reflHeap :: Reflective (Heap Int) (Heap Int)
 reflHeap = Reflective.sized (arbHeap Nothing)
@@ -134,7 +123,3 @@ reflHeap = Reflective.sized (arbHeap Nothing)
                     then Reflective.exact Nothing
                     else Just <$> Reflective.focus _Just (Reflective.choose (hi, i))
             )
-
-instance Arbitrary (Heap Int) where
-  arbitrary = Reflective.gen reflHeap
-  shrink = genericShrink

@@ -43,7 +43,7 @@ import Data.Bifunctor (Bifunctor (..))
 import Data.Char (chr, ord)
 import Data.Foldable (asum)
 import Data.List (group, minimumBy, sort, transpose)
-import Data.Maybe (fromJust, fromMaybe, listToMaybe, mapMaybe, maybeToList)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
 import Data.Monoid (First)
 import Data.Ord (comparing)
 import Data.Void (Void)
@@ -193,6 +193,8 @@ resize w (Bind x f) = Bind (Resize w x) (resize w . f)
 
 sized :: (Int -> Reflective b a) -> Reflective b a
 sized = Bind GetSize
+
+-- Interpretations
 
 gen :: forall d c. Reflective d c -> Gen c
 gen = interp
@@ -381,27 +383,28 @@ choices rg v = snd <$> aux rg v Nothing
       pure (y, draw cs +++ cs')
 
 unparse :: Reflective a a -> a -> Maybe [String]
-unparse rg v = listToMaybe (snd <$> aux rg v)
+unparse rg v = listToMaybe (snd <$> aux rg v Nothing)
   where
-    interpR :: R b a -> b -> [(a, [String])]
-    interpR (Pick xs) b = do
+    interpR :: R b a -> b -> Maybe Int -> [(a, [String])]
+    interpR (Pick xs) b s = do
       (_, ms, x) <- xs
       case ms of
-        Nothing -> aux x b
-        Just s -> second (s :) <$> aux x b
-    interpR (ChooseInteger _) b = pure (b, [])
-    interpR (Lmap f x) b = interpR x (f b)
-    interpR (Prune x) b = case b of
+        Nothing -> aux x b s
+        Just l -> second (l :) <$> aux x b s
+    interpR (ChooseInteger _) b _ = pure (b, [])
+    interpR (Lmap f x) b s = interpR x (f b) s
+    interpR (Prune x) b s = case b of
       Nothing -> []
-      Just a -> interpR x a
-    interpR GetSize _ = error "unparse: GetSize"
-    interpR (Resize {}) _ = error "unparse: Resize"
+      Just a -> interpR x a s
+    interpR GetSize _ Nothing = pure (30, [])
+    interpR GetSize _ (Just n) = pure (n, [])
+    interpR (Resize n r) b _ = interpR r b (Just n)
 
-    aux :: Reflective b a -> b -> [(a, [String])]
-    aux (Return x) _ = pure (x, [])
-    aux (Bind mx f) b = do
-      (x, cs) <- interpR mx b
-      (y, cs') <- aux (f x) b
+    aux :: Reflective b a -> b -> Maybe Int -> [(a, [String])]
+    aux (Return x) _ _ = pure (x, [])
+    aux (Bind mx f) b s = do
+      (x, cs) <- interpR mx b s
+      (y, cs') <- aux (f x) b s
       pure (y, cs ++ cs')
 
 complete :: Reflective a a -> a -> IO (Maybe a)
@@ -429,21 +432,49 @@ complete g v = do
       xs <- interpR mx b
       concat <$> mapM (\x -> aux (f x) b) xs
 
+-- Other Functions
+
+shrink :: (a -> Bool) -> Reflective a a -> a -> a
+shrink p g =
+  fromMaybe (error "shrink: no solution")
+    . regen g
+    . flatten
+    . head
+    . applyShrinker swapBits
+    . applyShrinker zeroDraws
+    . applyShrinker subChoices
+    . take 1
+    . choices g
+  where
+    applyShrinker :: (BitTree -> [BitTree]) -> [BitTree] -> [BitTree]
+    applyShrinker s !ts =
+      let ts' = take 1 . filter (any p . regen g . flatten) . sort . concatMap s $ ts
+       in if null ts' || ts' == ts then ts else applyShrinker s ts'
+
+validate :: Show a => Reflective a a -> IO ()
+validate g =
+  quickCheckWith
+    (stdArgs {maxSuccess = 1000, maxSize = 30})
+    (forAll (gen g) (check g))
+
+validateChoice :: (Eq a, Show a) => Reflective a a -> IO ()
+validateChoice g =
+  quickCheckWith
+    (stdArgs {maxSuccess = 1000})
+    (forAll (gen g) $ \x -> all ((== Just x) . regen g . flatten) (choices g x))
+
+validateParse :: (Eq a, Show a) => Reflective a a -> IO ()
+validateParse g =
+  quickCheckWith
+    (stdArgs {maxSuccess = 10000})
+    (forAll (gen g) $ \x -> all ((== x) . fst . head . filter (null . snd) . parse g) (unparse g x))
+
 -- Examples
 
 data Tree = Leaf | Node Tree Int Tree
   deriving (Show, Eq, Ord)
 
 makePrisms ''Tree
-
-height :: Tree -> Int
-height Leaf = 0
-height (Node l _ r) = 1 + max (height l) (height r)
-
-unbalanced :: Tree -> Bool
-unbalanced Leaf = False
-unbalanced (Node l _ r) =
-  unbalanced l || unbalanced r || abs (height l - height r) > 1
 
 nodeValue :: Tree -> Maybe Int
 nodeValue (Node _ x _) = Just x
@@ -456,22 +487,6 @@ nodeLeft _ = Nothing
 nodeRight :: Tree -> Maybe Tree
 nodeRight (Node _ _ r) = Just r
 nodeRight _ = Nothing
-
-weirdTree :: Reflective Tree Tree
-weirdTree = aux (10 :: Int)
-  where
-    aux n
-      | n == 0 = exact Leaf
-      | otherwise = do
-          oneof
-            [ exact Leaf,
-              do
-                x <- comap nodeValue (choose (1, 10))
-                l <- comap nodeLeft (aux (n - 1))
-                r <- comap nodeRight (aux (n - 1))
-                pure (Node l x r),
-              exact (Node Leaf 2 Leaf)
-            ]
 
 bstFwd :: Reflective Void Tree
 bstFwd = aux (1, 10)
@@ -517,101 +532,26 @@ hypoTree =
         exact (Node l 0 r)
     ]
 
-data Expr
-  = Num Int
-  | Add Expr Expr
-  | Mul Expr Expr
-  deriving (Show, Eq, Ord)
+-- main :: IO ()
+-- main = do
+--   print =<< QC.generate (gen weirdTree)
+--   print =<< QC.generate (gen bstFwd)
+--   let ss = fromJust $ unparse bst (Node Leaf 1 (Node Leaf 2 Leaf))
+--   print ss
+--   print (parse bst ss)
+--   let n l = Node l 0
+--   print $ (map flatten . choices hypoTree) (n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
+--   print $ (map flatten . choices hypoTree) (n Leaf (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
+--   print $ choices hypoTree (n Leaf (n (n Leaf Leaf) Leaf))
+--   print $ (map flatten . choices hypoTree) (n Leaf (n Leaf (n Leaf Leaf)))
+--   print $ choices hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
+--   print $ choices bst (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
+--   print $ map fst $ filter (null . snd) $ parse expression (words "( 1 + 2 ) * ( 3 + 3 * 4 )")
+--   let _hole_ = undefined
+--   print =<< complete bst (Node _hole_ 5 _hole_)
+--   print =<< complete bst (Node (Node _hole_ 2 Leaf) 5 (Node _hole_ 7 _hole_))
+--   print =<< QC.generate (byExample expression [Mul (Num 1) (Num 2), Mul (Num 3) (Num 4)])
 
-makePrisms ''Expr
-
-expression :: Reflective Expr Expr
-expression = expr (10 :: Int)
-  where
-    expr n
-      | n <= 1 = term n
-      | otherwise =
-          oneof
-            [ do
-                x <- focus (_Add . _1) (term (n `div` 2))
-                y <- token "+" *> focus (_Add . _2) (expr (n `div` 2))
-                pure (Add x y),
-              term n
-            ]
-    term n
-      | n <= 1 = factor n
-      | otherwise =
-          oneof
-            [ do
-                x <- focus (_Mul . _1) (factor (n `div` 2))
-                y <- token "*" *> focus (_Mul . _2) (term (n `div` 2))
-                pure (Mul x y),
-              factor n
-            ]
-    factor n
-      | n <= 1 = Num <$> focus _Num (choose (1, 10))
-      | otherwise =
-          oneof
-            [ Num <$> focus _Num (choose (1, 10)),
-              token "(" *> expr (n - 1) <* token ")"
-            ]
-    token s = labelled [(s, pure ())]
-
-shrink :: (a -> Bool) -> Reflective a a -> a -> a
-shrink p g =
-  fromMaybe (error "shrink: no solution")
-    . regen g
-    . flatten
-    . head
-    . applyShrinker swapBits
-    . applyShrinker zeroDraws
-    . applyShrinker subChoices
-    . take 1
-    . choices g
-  where
-    applyShrinker :: (BitTree -> [BitTree]) -> [BitTree] -> [BitTree]
-    applyShrinker s !ts =
-      let ts' = take 1 . filter (any p . regen g . flatten) . sort . concatMap s $ ts
-       in if null ts' || ts' == ts then ts else applyShrinker s ts'
-
-validate :: Show a => Reflective a a -> IO ()
-validate g =
-  quickCheckWith
-    (stdArgs {maxSuccess = 1000, maxSize = 30})
-    (forAll (gen g) (check g))
-
-validateChoice :: (Eq a, Show a) => Reflective a a -> IO ()
-validateChoice g =
-  quickCheckWith
-    (stdArgs {maxSuccess = 1000})
-    (forAll (gen g) $ \x -> all ((== Just x) . regen g . flatten) (choices g x))
-
-validateParse :: (Eq a, Show a) => Reflective a a -> IO ()
-validateParse g =
-  quickCheckWith
-    (stdArgs {maxSuccess = 10000})
-    (forAll (gen g) $ \x -> all ((== x) . fst . head . filter (null . snd) . parse g) (unparse g x))
-
-main :: IO ()
-main = do
-  print =<< QC.generate (gen weirdTree)
-  print =<< QC.generate (gen bstFwd)
-  let ss = fromJust $ unparse bst (Node Leaf 1 (Node Leaf 2 Leaf))
-  print ss
-  print (parse bst ss)
-  let n l = Node l 0
-  print $ (map flatten . choices hypoTree) (n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
-  print $ (map flatten . choices hypoTree) (n Leaf (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
-  print $ choices hypoTree (n Leaf (n (n Leaf Leaf) Leaf))
-  print $ (map flatten . choices hypoTree) (n Leaf (n Leaf (n Leaf Leaf)))
-  print $ choices hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
-  print $ choices bst (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
-  print $ map fst $ filter (null . snd) $ parse expression (words "( 1 + 2 ) * ( 3 + 3 * 4 )")
-  let _hole_ = undefined
-  print =<< complete bst (Node _hole_ 5 _hole_)
-  print =<< complete bst (Node (Node _hole_ 2 Leaf) 5 (Node _hole_ 7 _hole_))
-  print =<< QC.generate (byExample expression [Mul (Num 1) (Num 2), Mul (Num 3) (Num 4)])
-
-  let t = n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf)
-  print (choices hypoTree t)
-  print $ shrink unbalanced hypoTree t
+--   let t = n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf)
+--   print (choices hypoTree t)
+--   print $ shrink unbalanced hypoTree t

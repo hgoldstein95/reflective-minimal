@@ -65,10 +65,10 @@ main :: IO ()
 main = do
   validate Calc.reflCalc
   validate Heap.reflHeap
-  validate (Freer.resize 10 Parser.reflLang)
+  validate (Freer.resize 10 Parser.reflLang) -- Size 30 is a bit slow
   validate Bound5.reflT
 
-  let n = 100
+  let n = 1000
 
   putStr "heap: " >> experiment Heap.prop_ToSortedList Heap.invariant Heap.reflHeap Heap.size n
   putStr "bound5: " >> experiment Bound5.prop Bound5.pre Bound5.reflT Bound5.size n

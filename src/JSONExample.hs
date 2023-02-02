@@ -4,7 +4,7 @@ import Control.Lens (_head, _tail)
 import Data.Bits (xor)
 import Data.Char (chr, digitToInt, ord)
 import Data.Foldable (Foldable (foldl'))
-import Freer (Reflective, comap, exact, focus, labelled, lmap)
+import Freer
 import Text.Printf (printf)
 
 token :: Char -> Reflective b ()
@@ -127,15 +127,15 @@ char_ =
   labelled
     [ ("letter", letter),
       ("digit", digit),
-      ("unescapedspecial", unescapedspecial)
-      -- ("escapedspecial", escapedspecial) -- FIXME: I don't know how to fix this.
+      ("unescapedspecial", unescapedspecial),
+      ("escapedspecial", escapedspecial)
     ]
 
 -- letter = "y" | "c" | "K" | "T" | "s" | "N" | "b" | "S" | "R" | "Y" | "C" | "B" | "h" | "J" | "u" | "Q" | "d" | "k" | "t" | "V" | "a" | "x" | "G" | "v" | "D" | "m" | "F" | "w" | "i" | "n" | "L" | "p" | "q" | "W" | "A" | "X" | "I" | "O" | "l" | "P" | "H" | "e" | "f" | "o" | "j" | "Z" | "g" | "E" | "r" | "M" | "z" | "U" ;
 letter :: Reflective Char Char
 letter = labelled (map (\c -> ([c], exact c)) (['a' .. 'z'] ++ ['A' .. 'Z']))
 
--- unescapedspecial = "/" | "+" | ":" | "@" | "$" | "!" | "'" | "(" | "," | "." | ")" | "-" | "#" | "_" | ... "%" | "=" | ">" | "<" | "{" | "}" | "^" | "*" | "|" | ";" | " " ; -- NOTE: I had to add some things
+-- unescapedspecial = "/" | "+" | ":" | "@" | "$" | "!" | "'" | "(" | "," | "." | ")" | "-" | "#" | "_"
 unescapedspecial :: Reflective Char Char
 unescapedspecial = labelled (map (\c -> ([c], exact c)) ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_'])
 
