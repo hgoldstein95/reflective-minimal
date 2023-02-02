@@ -1,8 +1,6 @@
-module JSONExample where
+module PackageJSONExample where
 
 import Control.Lens (_head, _tail)
-import Data.Bits (xor)
-import Data.Foldable (Foldable (foldl'))
 import Freer
 
 token :: Char -> Reflective b ()
@@ -11,14 +9,6 @@ token s = labelled [(['\'', s, '\''], pure ())]
 label :: String -> Reflective b ()
 label s = labelled [(s, pure ())]
 
--- start = array | object ;
-start :: Reflective String String
-start =
-  labelled
-    [ ("array", array),
-      ("object", object)
-    ]
-
 {-# INLINE (>>-) #-}
 (>>-) :: Reflective String String -> (String -> Reflective String String) -> Reflective String String
 p >>- f = do
@@ -26,61 +16,88 @@ p >>- f = do
   lmap (drop (length x)) (f x)
 
 -- object = "{" "}" | "{" members "}" ;
-object :: Reflective String String
-object =
+object :: Reflective String String -> Reflective String String
+object val =
   labelled
-    [ ( "'{' members '}'",
+    [ ("'{' '}'", lmap (take 2) (exact "{}")),
+      ( "'{' members '}'",
         lmap (take 1) (exact "{") >>- \b1 ->
-          members >>- \ms ->
+          members val >>- \ms ->
             lmap (take 1) (exact "}") >>- \b2 ->
               pure (b1 ++ ms ++ b2)
-      ),
-      ("'{' '}'", lmap (take 2) (exact "{}"))
+      )
     ]
 
 -- members = pair | pair ',' members ;
-members :: Reflective String String
-members =
+members :: Reflective String String -> Reflective String String
+members val =
   labelled
-    [ ("pair", pair),
+    [ ("pair", pair val),
       ( "pair ',' members",
-        pair >>- \p ->
+        pair val >>- \p ->
           lmap (take 1) (exact ",") >>- \c ->
-            members >>- \ps ->
+            members val >>- \ps ->
               pure (p ++ c ++ ps)
       )
     ]
 
 -- pair = string ':' value ;
-pair :: Reflective String String
-pair =
+pair :: Reflective String String -> Reflective String String
+pair val =
   string >>- \s ->
     lmap (take 1) (exact ":") >>- \c ->
-      value >>- \v ->
+      val >>- \v ->
         pure (s ++ c ++ v)
 
+object' :: [(String, Reflective String String)] -> Reflective String String
+object' ps =
+  lmap (take 1) (exact "{") >>- \b1 ->
+    members' ps >>- \ms ->
+      lmap (take 1) (exact "}") >>- \b2 ->
+        pure (b1 ++ ms ++ b2)
+
+-- members = pair | pair ',' members ;
+members' :: [(String, Reflective String String)] -> Reflective String String
+members' [] = pure ""
+members' [p] = pair' p
+members' (p_ : ps_) =
+  pair' p_ >>- \p ->
+    lmap (take 1) (exact ",") >>- \c ->
+      members' ps_ >>- \ps ->
+        pure (p ++ c ++ ps)
+
+-- pair = string ':' value ;
+pair' :: (String, Reflective String String) -> Reflective String String
+pair' (s, val) =
+  lmap (take 1) (exact "\"") >>- \q1 ->
+    lmap (take (length s)) (exact s) >>- \_ ->
+      lmap (take 1) (exact "\"") >>- \q2 ->
+        lmap (take 1) (exact ":") >>- \c ->
+          val >>- \v ->
+            pure (q1 ++ s ++ q2 ++ c ++ v)
+
 -- array = "[" elements "]" | "[" "]" ;
-array :: Reflective String String
-array =
+array :: Reflective String String -> Reflective String String
+array val =
   labelled
     [ ("'[' ']'", lmap (take 2) (exact "[]")),
       ( "'[' elements ']'",
         lmap (take 1) (exact "[") >>- \b1 ->
-          elements >>- \ms ->
+          elements val >>- \ms ->
             lmap (take 1) (exact "]") >>- \b2 ->
               pure (b1 ++ ms ++ b2)
       )
     ]
 
 -- elements = value ',' elements | value ;
-elements :: Reflective String String
-elements =
+elements :: Reflective String String -> Reflective String String
+elements val =
   labelled
-    [ ("value", value),
+    [ ("value", val),
       ( "value ',' elements",
-        value >>- \el ->
+        val >>- \el ->
           lmap (take 1) (exact ",") >>- \c ->
-            elements >>- \es ->
+            elements val >>- \es ->
               pure (el ++ c ++ es)
       )
     ]
@@ -91,10 +108,10 @@ value =
   labelled
     [ ("false", lmap (take 5) (exact "false")),
       ("string", string),
-      ("array", array),
+      ("array", array value),
       ("number", number),
       ("true", lmap (take 4) (exact "true")),
-      ("object", object),
+      ("object", object value),
       ("null", lmap (take 4) (exact "null"))
     ]
 
@@ -104,6 +121,17 @@ string =
   labelled
     [ ("'\"' '\"'", lmap (take 2) (exact "\"\"")),
       ( "'\"' chars '\"'",
+        lmap (take 1) (exact ['"']) >>- \q1 ->
+          chars >>- \cs ->
+            lmap (take 1) (exact ['"']) >>- \q2 ->
+              pure (q1 ++ cs ++ q2)
+      )
+    ]
+
+string1 :: Reflective String String
+string1 =
+  labelled
+    [ ( "'\"' chars '\"'",
         lmap (take 1) (exact ['"']) >>- \q1 ->
           chars >>- \cs ->
             lmap (take 1) (exact ['"']) >>- \q2 ->
@@ -135,7 +163,7 @@ letter = labelled (map (\c -> ([c], exact c)) (['a' .. 'z'] ++ ['A' .. 'Z']))
 
 -- unescapedspecial = "/" | "+" | ":" | "@" | "$" | "!" | "'" | "(" | "," | "." | ")" | "-" | "#" | "_"
 unescapedspecial :: Reflective Char Char
-unescapedspecial = labelled (map (\c -> ([c], exact c)) ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_'])
+unescapedspecial = labelled (map (\c -> ([c], exact c)) ['/', '+', ':', '@', '$', '!', '\'', '(', ',', '.', ')', '-', '#', '_', ' ', '^'])
 
 -- escapedspecial = "\\b" | "\\n" | "\\r" | "\\/" | "\\u" hextwobyte | "\\\\" | "\\t" | "\\\"" | "\\f" ;
 escapedspecial :: Reflective Char Char
@@ -147,7 +175,6 @@ escapedspecial =
       ("'\\/'", exact '/'),
       ("'\\\\'", exact '\\'),
       ("'\\t'", exact '\t'),
-      ("'\\\"", exact '\"'),
       ("'\\f'", exact '\f')
     ]
 
@@ -239,17 +266,27 @@ e =
       ("'E+'", lmap (take 2) (exact "E+"))
     ]
 
-withChecksum :: Reflective String String
-withChecksum = do
-  let a = "{\"payload\":"
-  let b = ",\"checksum\":"
-  let c = "}"
-  _ <- lmap (take (length a)) (exact a)
-  payload <- lmap (drop (length a)) start
-  let checksum = take 8 (show (abs (hash payload)))
-  _ <- lmap (take (length b) . drop (length a + length payload)) (exact b)
-  _ <- lmap (take (length checksum) . drop (length a + length payload + length b)) (exact checksum)
-  _ <- lmap (take (length c) . drop (length a + length payload + length b + length checksum)) (exact c)
-  pure (a ++ payload ++ b ++ checksum ++ c)
-  where
-    hash = foldl' (\h c -> 33 * h `xor` fromEnum c) 5381
+package :: Reflective String String
+package =
+  object'
+    [ ("name", string1),
+      ("description", string1),
+      ( "scripts",
+        object'
+          [ ("start", string1),
+            ("build", string1),
+            ("test", string1)
+          ]
+      ),
+      ( "repository",
+        object'
+          [ ("type", string1),
+            ("url", string1)
+          ]
+      ),
+      ("keywords", array string),
+      ("author", string1),
+      ("license", string1),
+      ("devDependencies", object string1),
+      ("dependencies", object string1)
+    ]

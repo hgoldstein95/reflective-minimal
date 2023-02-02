@@ -8,9 +8,6 @@ import JSONExample (start)
 import System.Directory (getDirectoryContents)
 import Test.QuickCheck (generate)
 
--- main :: IO ()
--- main = getContents >>= putStrLn . shrink (isInfixOf "^4.15.3") package
-
 main :: IO ()
 main = do
   files <- drop 2 <$> getDirectoryContents "analysis/json"
