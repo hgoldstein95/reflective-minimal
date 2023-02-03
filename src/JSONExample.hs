@@ -4,7 +4,7 @@ import Control.Lens (_head, _tail)
 import Data.Bits (xor)
 import Data.Char (isAlpha, isNumber)
 import Data.Foldable (Foldable (foldl'))
-import Freer
+import Freer hiding (parse)
 
 token :: Char -> Reflective b ()
 token s = labelled [(['\'', s, '\''], pure ())]
@@ -241,12 +241,13 @@ withChecksum = do
   let a = "{\"payload\":"
   let b = ",\"checksum\":"
   let c = "}"
-  _ <- lmap (take (length a)) (exact a)
-  payload <- lmap (drop (length a)) start
-  let checksum = take 8 (show (abs (hash payload)))
-  _ <- lmap (take (length b) . drop (length a + length payload)) (exact b)
-  _ <- lmap (take (length checksum) . drop (length a + length payload + length b)) (exact checksum)
-  _ <- lmap (take (length c) . drop (length a + length payload + length b + length checksum)) (exact c)
-  pure (a ++ payload ++ b ++ checksum ++ c)
+  parse a >>- \_ ->
+    start >>- \payload -> do
+      let checksum = take 8 (show (abs (hash payload)))
+      parse b >>- \_ ->
+        parse checksum >>- \_ ->
+          parse c >>- \_ ->
+            pure (a ++ payload ++ b ++ checksum ++ c)
   where
     hash = foldl' (\h c -> 33 * h `xor` fromEnum c) 5381
+    parse s = lmap (take (length s)) (exact s)
