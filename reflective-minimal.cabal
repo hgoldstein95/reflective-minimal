@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       Bound5Example
+      BSTEnumExample
       CalcExample
       Choices
       Freer
@@ -47,6 +48,7 @@ library
     , base >=4.7 && <5
     , data-default
     , directory
+    , leancheck
     , lens
     , logict
     , mtl
@@ -66,6 +68,7 @@ executable json-exe
     , base >=4.7 && <5
     , data-default
     , directory
+    , leancheck
     , lens
     , logict
     , mtl
@@ -86,6 +89,7 @@ executable package-json-exe
     , base >=4.7 && <5
     , data-default
     , directory
+    , leancheck
     , lens
     , logict
     , mtl
@@ -106,6 +110,7 @@ executable reflective-minimal-exe
     , base >=4.7 && <5
     , data-default
     , directory
+    , leancheck
     , lens
     , logict
     , mtl
@@ -128,6 +133,7 @@ test-suite reflective-minimal-test
     , data-default
     , directory
     , hspec
+    , leancheck
     , lens
     , logict
     , mtl

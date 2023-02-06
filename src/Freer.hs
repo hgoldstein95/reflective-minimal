@@ -38,16 +38,16 @@ import Control.Applicative (empty)
 import Control.Exception (SomeException)
 import Control.Lens (Getting, makePrisms, over, preview, view, _1, _2, _3, _head, _tail)
 import Control.Monad (ap, guard, (>=>))
-import Control.Monad.Logic (Logic, MonadLogic ((>>-)), observeAll)
+import Control.Monad.Logic (Logic, MonadLogic (interleave, (>>-)), observeAll)
 import Data.Bifunctor (Bifunctor (..))
 import Data.Char (chr, ord)
-import Data.Foldable (asum)
 import Data.List (group, minimumBy, sort, transpose)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
 import Data.Monoid (First)
 import Data.Ord (comparing)
 import Data.Void (Void)
 import GHC.IO (catch, evaluate)
+import qualified Test.LeanCheck as LC
 import Test.QuickCheck (Args (maxSize, maxSuccess), Gen, forAll, quickCheckWith, stdArgs)
 import qualified Test.QuickCheck as QC
 
@@ -289,8 +289,8 @@ enum :: Reflective b a -> [a]
 enum = observeAll . aux
   where
     interpR :: R b a -> Logic a
-    interpR (Pick xs) = asum (map (aux . view _3) xs)
-    interpR (ChooseInteger (lo, hi)) = asum (map pure [lo .. hi])
+    interpR (Pick xs) = foldr (interleave . aux . view _3) empty xs
+    interpR (ChooseInteger (lo, hi)) = foldr (interleave . pure) empty [lo .. hi]
     interpR (Lmap _ x) = interpR x
     interpR (Prune x) = interpR x
     interpR GetSize = error "enum: GetSize"
@@ -301,6 +301,21 @@ enum = observeAll . aux
     aux (Bind x f) =
       interpR x >>- \y ->
         aux (f y)
+
+lean :: Reflective b a -> [a]
+lean = concat . aux
+  where
+    interpR :: R b a -> [[a]]
+    interpR (Pick xs) = LC.concatT [zipWith (\i (_, _, x) -> aux x `LC.ofWeight` i) [1, 2 ..] xs]
+    interpR (ChooseInteger (lo, hi)) = LC.concatT [map (\x -> [[x]]) [lo .. hi]]
+    interpR (Lmap _ x) = interpR x
+    interpR (Prune x) = interpR x
+    interpR GetSize = error "lean: GetSize"
+    interpR (Resize {}) = error "lean: Resize"
+
+    aux :: Reflective b a -> [[a]]
+    aux (Return x) = [[x]]
+    aux (Bind x f) = LC.concatMapT (aux . f) (interpR x)
 
 regen :: Reflective b a -> Bits -> Maybe a
 regen rg cs = listToMaybe (fst <$> aux rg (unBits cs) Nothing)
@@ -405,6 +420,33 @@ unparse rg v = snd <$> listToMaybe (aux rg v)
       (x, cs) <- interpR mx b
       (y, cs') <- aux (f x) b
       pure (y, cs ++ cs')
+
+reflect :: Reflective a a -> a -> [[String]]
+reflect g = (snd <$>) . interp g
+  where
+    interp :: Reflective b a -> b -> [(a, [String])]
+    interp (Return x) = \_ -> pure (x, [])
+    interp (Bind mx f) = \b -> do
+      (x, cs) <- interpR mx b
+      (y, cs') <- interp (f x) b
+      pure (y, cs ++ cs')
+
+    interpR :: R b a -> b -> [(a, [String])]
+    interpR (Pick xs) = \b ->
+      concatMap
+        ( \(_, ms, x) ->
+            case ms of
+              Nothing -> interp x b
+              Just lbl -> (\(a, lbls) -> (a, lbl : lbls)) <$> interp x b
+        )
+        xs
+    interpR (Lmap f x) = interpR x . f
+    interpR (Prune x) = \case
+      Nothing -> []
+      Just !a -> interpR x a
+    interpR (ChooseInteger _) = \b -> pure (b, [])
+    interpR GetSize = error "unparse: GetSize"
+    interpR (Resize {}) = error "unparse: Resize"
 
 complete :: Reflective a a -> a -> IO (Maybe a)
 complete g v = do
@@ -529,6 +571,17 @@ hypoTree =
         l <- comap nodeLeft hypoTree
         r <- comap nodeRight hypoTree
         exact (Node l 0 r)
+    ]
+
+infFanOut :: Reflective [Int] [Int]
+infFanOut =
+  oneof
+    [ infFanOut,
+      exact [],
+      do
+        x <- focus _head (choose (0, 10))
+        xs <- focus _tail infFanOut
+        exact (x : xs)
     ]
 
 -- main :: IO ()

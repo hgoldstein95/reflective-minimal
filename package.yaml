@@ -29,6 +29,7 @@ dependencies:
 - logict
 - template-haskell
 - directory
+- leancheck
 
 ghc-options:
 - -Wall
