@@ -30,6 +30,7 @@ library
       CalcExample
       Choices
       Freer
+      FreerChurch
       HeapExample
       Hypothesis
       JSONExample
@@ -48,6 +49,7 @@ library
     , base >=4.7 && <5
     , data-default
     , directory
+    , free
     , leancheck
     , lens
     , logict
@@ -68,6 +70,7 @@ executable json-exe
     , base >=4.7 && <5
     , data-default
     , directory
+    , free
     , leancheck
     , lens
     , logict
@@ -89,6 +92,7 @@ executable package-json-exe
     , base >=4.7 && <5
     , data-default
     , directory
+    , free
     , leancheck
     , lens
     , logict
@@ -110,6 +114,7 @@ executable reflective-minimal-exe
     , base >=4.7 && <5
     , data-default
     , directory
+    , free
     , leancheck
     , lens
     , logict
@@ -132,6 +137,7 @@ test-suite reflective-minimal-test
     , base >=4.7 && <5
     , data-default
     , directory
+    , free
     , hspec
     , leancheck
     , lens

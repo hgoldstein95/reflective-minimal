@@ -30,6 +30,7 @@ dependencies:
 - template-haskell
 - directory
 - leancheck
+- free
 
 ghc-options:
 - -Wall
