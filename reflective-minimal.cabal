@@ -39,6 +39,8 @@ library
       PackageJSONExample
       ParserExample
       STLCExample
+      SystemF
+      SystemFExample
   other-modules:
       Paths_reflective_minimal
   hs-source-dirs:
