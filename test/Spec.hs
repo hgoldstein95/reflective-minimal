@@ -1,6 +1,9 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE LambdaCase #-}
 
+-- TODO: this file has become out of date and doesnt compile. It should be updated
+--       and have the properties we list in it and testable
+
 import Data.List (nub)
 import Freer (Reflective, choices, choicesS, comap, exact, fix, gen, label, magic, pick, regen, regenS)
 import Test.QuickCheck (Gen)

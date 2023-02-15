@@ -6,6 +6,9 @@ import Data.Char (isAlpha, isNumber)
 import Data.Foldable (Foldable (foldl'))
 import Freer hiding (parse)
 
+-- TODO (QUESTION) I think we should label which JSON example we use for the experiment in the
+-- paper. Out of interest, does it make a difference if it is typed?
+
 token :: Char -> Reflective b ()
 token s = labelled [(['\'', s, '\''], pure ())]
 
@@ -236,6 +239,7 @@ e =
       ("'E+'", lmap (take 2) (exact "E+"))
     ]
 
+-- DIFFERENCE we call this a hash in the paper
 withChecksum :: Reflective String String
 withChecksum = do
   let a = "{\"payload\":"

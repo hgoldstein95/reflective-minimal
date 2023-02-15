@@ -86,6 +86,9 @@ instance Monad (Reflective b) where
   Return x >>= f = f x
   Bind u g >>= f = Bind u (g >=> f)
 
+-- TODO (QUESTION) this differs from paper code in that the profunctor and partialprofunctor
+-- methods do not belong to a type class -- is there a reason for this?
+
 dimap :: (c -> d) -> (a -> b) -> Reflective d a -> Reflective c b
 dimap _ g (Return a) = Return (g a)
 dimap f g (Bind x h) = Bind (Lmap f x) (dimap f g . h)
@@ -196,6 +199,8 @@ sized = Bind GetSize
 
 -- Interpretations
 
+-- TODO DIFFERENCE this is called generate in the paper
+-- rename? label as the code version of generate? something else?
 gen :: forall d c. Reflective d c -> Gen c
 gen = interp
   where
@@ -242,6 +247,11 @@ check g v = (not . null) (interp g v Nothing)
     interpR GetSize _ Nothing = pure 30
     interpR (Resize s x) b _ = interpR x b (Just s)
 
+-- TODO DIFFERENCE in the paper this occurs in a similar way
+-- Maybe instead of a paper code file, we just label these with comments as to what
+-- they correspond to?
+-- Just because if i was reading and looking at the code as I went, I would be grepping
+-- for the function names I wanna see the definition of
 weighted :: Reflective b a -> Bool -> (String -> Int) -> Gen a
 weighted g inv ws = aux g ws 100
   where
@@ -271,6 +281,7 @@ weighted g inv ws = aux g ws 100
       y <- interpR x w s
       aux (f y) w s
 
+-- TODO DIFFERENCE in paper this is called probabilityOf,
 weights :: Reflective a a -> [a] -> [(String, Int)]
 weights g =
   map (\xs -> (head xs, length xs))
@@ -285,6 +296,8 @@ byExample g xs = weighted g False (\s -> fromMaybe 0 (lookup s (weights g xs)))
 byExampleInv :: Reflective a a -> [a] -> Gen a
 byExampleInv g xs = weighted g True (\s -> fromMaybe 0 (lookup s (weights g xs)))
 
+-- TODO DIFFERENCE in paper this is
+-- enumerate :: Reflective b a -> [[a]]
 enum :: Reflective b a -> [a]
 enum = observeAll . aux
   where
@@ -371,6 +384,7 @@ parse g v = aux g v Nothing
       (x, b') <- interpR mx b s
       aux (f x) b' s
 
+-- TODO DIFFERENCE in the paper this is simpler
 choices :: Reflective a a -> a -> [BitTree]
 choices rg v = snd <$> aux rg v Nothing
   where
@@ -529,6 +543,7 @@ nodeRight :: Tree -> Maybe Tree
 nodeRight (Node _ _ r) = Just r
 nodeRight _ = Nothing
 
+-- TODO DIFFERENCE again (slightly) different from in the paper
 bstFwd :: Reflective Void Tree
 bstFwd = aux (1, 10)
   where
@@ -543,6 +558,13 @@ bstFwd = aux (1, 10)
                 r <- fwd (aux (x + 1, hi))
                 return (Node l x r)
             ]
+
+-- TODO DIFFERENCE the bst that we have in the intro doesnt appear here, bst below is similar,
+-- but different. IDK if we wanna have it coded up the same cos if i was looking
+-- to the artifact I'd wanna find it exact
+-- TODO DIFFERENCE on a similar vein we don't have the bst QuickCheck generator
+-- Do we want like a paper examples file so people can see them there and follow
+-- the imports to find where the definitions they use are?
 
 bst :: Reflective Tree Tree
 bst = aux (1, 10)
@@ -583,6 +605,8 @@ infFanOut =
         xs <- focus _tail infFanOut
         exact (x : xs)
     ]
+
+-- TODO unlabeled missing from code
 
 -- main :: IO ()
 -- main = do
