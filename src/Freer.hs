@@ -88,6 +88,8 @@ instance Monad (Reflective b) where
 
 -- TODO (QUESTION) this differs from paper code in that the profunctor and partialprofunctor
 -- methods do not belong to a type class -- is there a reason for this?
+-- HG: Yep! I note that in a footnote in the paper. You can't actually implement the typeclass
+-- instances without a newtype wrapper, but that just makes everything ugly.
 
 dimap :: (c -> d) -> (a -> b) -> Reflective d a -> Reflective c b
 dimap _ g (Return a) = Return (g a)
@@ -201,6 +203,7 @@ sized = Bind GetSize
 
 -- TODO DIFFERENCE this is called generate in the paper
 -- rename? label as the code version of generate? something else?
+-- HG: Just rename here? I think that's fine.
 gen :: forall d c. Reflective d c -> Gen c
 gen = interp
   where
@@ -252,6 +255,7 @@ check g v = (not . null) (interp g v Nothing)
 -- they correspond to?
 -- Just because if i was reading and looking at the code as I went, I would be grepping
 -- for the function names I wanna see the definition of
+-- HG: We can also rename this, I don't really mind either way.
 weighted :: Reflective b a -> Bool -> (String -> Int) -> Gen a
 weighted g inv ws = aux g ws 100
   where
@@ -385,6 +389,8 @@ parse g v = aux g v Nothing
       aux (f x) b' s
 
 -- TODO DIFFERENCE in the paper this is simpler
+-- HG: Yeah, I deliberately leave out the complexity in the paper. I thought I made that clear in
+-- the writing, but I might not have.
 choices :: Reflective a a -> a -> [BitTree]
 choices rg v = snd <$> aux rg v Nothing
   where
@@ -544,6 +550,8 @@ nodeRight (Node _ _ r) = Just r
 nodeRight _ = Nothing
 
 -- TODO DIFFERENCE again (slightly) different from in the paper
+-- HG: We can actually just remove this or replace it with the paper version. This is just for
+-- experimentation.
 bstFwd :: Reflective Void Tree
 bstFwd = aux (1, 10)
   where
@@ -565,6 +573,8 @@ bstFwd = aux (1, 10)
 -- TODO DIFFERENCE on a similar vein we don't have the bst QuickCheck generator
 -- Do we want like a paper examples file so people can see them there and follow
 -- the imports to find where the definitions they use are?
+-- HG: I don't really know if I want to insist that every bit of the code in the paper appear somewhere
+-- in the repo; I think those generators are fine to have in the paper and not the repo.
 
 bst :: Reflective Tree Tree
 bst = aux (1, 10)
