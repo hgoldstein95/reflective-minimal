@@ -13,6 +13,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns  #-}
 
 module Freer where
 
@@ -51,6 +52,7 @@ import qualified Test.LeanCheck as LC
 import Test.QuickCheck (Args (maxSize, maxSuccess), Gen, forAll, quickCheckWith, stdArgs)
 import qualified Test.QuickCheck as QC
 
+
 -- Core Definitions
 
 data Freer f a where
@@ -85,11 +87,6 @@ instance Monad (Reflective b) where
   return = Return
   Return x >>= f = f x
   Bind u g >>= f = Bind u (g >=> f)
-
--- TODO (QUESTION) this differs from paper code in that the profunctor and partialprofunctor
--- methods do not belong to a type class -- is there a reason for this?
--- HG: Yep! I note that in a footnote in the paper. You can't actually implement the typeclass
--- instances without a newtype wrapper, but that just makes everything ugly.
 
 dimap :: (c -> d) -> (a -> b) -> Reflective d a -> Reflective c b
 dimap _ g (Return a) = Return (g a)
@@ -201,18 +198,15 @@ sized = Bind GetSize
 
 -- Interpretations
 
--- TODO DIFFERENCE this is called generate in the paper
--- rename? label as the code version of generate? something else?
--- HG: Just rename here? I think that's fine.
-gen :: forall d c. Reflective d c -> Gen c
-gen = interp
+generate :: forall d c. Reflective d c -> Gen c
+generate = interp
   where
     interp :: forall b a. Reflective b a -> Gen a
     interp (Return x) = pure x
     interp (Bind r f) = interpR r >>= interp . f
 
     interpR :: forall b a. R b a -> Gen a
-    interpR (Pick xs) = QC.frequency [(w, gen x) | (w, _, x) <- xs]
+    interpR (Pick xs) = QC.frequency [(w, generate x) | (w, _, x) <- xs]
     interpR (Lmap _ x) = interpR x
     interpR (Prune x) = interpR x
     interpR (ChooseInteger (lo, hi)) = QC.chooseInteger (lo, hi)
@@ -250,12 +244,7 @@ check g v = (not . null) (interp g v Nothing)
     interpR GetSize _ Nothing = pure 30
     interpR (Resize s x) b _ = interpR x b (Just s)
 
--- TODO DIFFERENCE in the paper this occurs in a similar way
--- Maybe instead of a paper code file, we just label these with comments as to what
--- they correspond to?
--- Just because if i was reading and looking at the code as I went, I would be grepping
--- for the function names I wanna see the definition of
--- HG: We can also rename this, I don't really mind either way.
+-- This corresponds to genWithWeights in the paper
 weighted :: Reflective b a -> Bool -> (String -> Int) -> Gen a
 weighted g inv ws = aux g ws 100
   where
@@ -285,9 +274,8 @@ weighted g inv ws = aux g ws 100
       y <- interpR x w s
       aux (f y) w s
 
--- TODO DIFFERENCE in paper this is called probabilityOf,
-weights :: Reflective a a -> [a] -> [(String, Int)]
-weights g =
+probabilityOf :: Reflective a a -> [a] -> [(String, Int)]
+probabilityOf g =
   map (\xs -> (head xs, length xs))
     . group
     . sort
@@ -295,12 +283,12 @@ weights g =
     . mapMaybe (unparse g)
 
 byExample :: Reflective a a -> [a] -> Gen a
-byExample g xs = weighted g False (\s -> fromMaybe 0 (lookup s (weights g xs)))
+byExample g xs = weighted g False (\s -> fromMaybe 0 (lookup s (probabilityOf g xs)))
 
 byExampleInv :: Reflective a a -> [a] -> Gen a
-byExampleInv g xs = weighted g True (\s -> fromMaybe 0 (lookup s (weights g xs)))
+byExampleInv g xs = weighted g True (\s -> fromMaybe 0 (lookup s (probabilityOf g xs)))
 
--- TODO DIFFERENCE in paper this is
+-- note that in the paper this appears as
 -- enumerate :: Reflective b a -> [[a]]
 enum :: Reflective b a -> [a]
 enum = observeAll . aux
@@ -388,9 +376,6 @@ parse g v = aux g v Nothing
       (x, b') <- interpR mx b s
       aux (f x) b' s
 
--- TODO DIFFERENCE in the paper this is simpler
--- HG: Yeah, I deliberately leave out the complexity in the paper. I thought I made that clear in
--- the writing, but I might not have.
 choices :: Reflective a a -> a -> [BitTree]
 choices rg v = snd <$> aux rg v Nothing
   where
@@ -480,7 +465,7 @@ complete g v = do
     interpR (Lmap f x) b = do
       catch
         (evaluate (f b) >>= \a -> interpR x a)
-        (\(_ :: SomeException) -> (: []) <$> QC.generate (gen (Bind x Return)))
+        (\(_ :: SomeException) -> (: []) <$> QC.generate (generate (Bind x Return)))
     interpR (Prune x) b = case b of
       Nothing -> pure []
       Just a -> interpR x a
@@ -516,19 +501,19 @@ validate :: Show a => Reflective a a -> IO ()
 validate g =
   quickCheckWith
     (stdArgs {maxSuccess = 1000, maxSize = 30})
-    (forAll (gen g) (check g))
+    (forAll (generate g) (check g))
 
 validateChoice :: (Eq a, Show a) => Reflective a a -> IO ()
 validateChoice g =
   quickCheckWith
     (stdArgs {maxSuccess = 1000})
-    (forAll (gen g) $ \x -> all ((== Just x) . regen g . flatten) (choices g x))
+    (forAll (generate g) $ \x -> all ((== Just x) . regen g . flatten) (choices g x))
 
 validateParse :: (Eq a, Show a) => Reflective a a -> IO ()
 validateParse g =
   quickCheckWith
     (stdArgs {maxSuccess = 10000})
-    (forAll (gen g) $ \x -> all ((== x) . fst . head . filter (null . snd) . parse g) (unparse g x))
+    (forAll (generate g) $ \x -> all ((== x) . fst . head . filter (null . snd) . parse g) (unparse g x))
 
 -- Examples
 
@@ -549,32 +534,18 @@ nodeRight :: Tree -> Maybe Tree
 nodeRight (Node _ _ r) = Just r
 nodeRight _ = Nothing
 
--- TODO DIFFERENCE again (slightly) different from in the paper
--- HG: We can actually just remove this or replace it with the paper version. This is just for
--- experimentation.
-bstFwd :: Reflective Void Tree
-bstFwd = aux (1, 10)
+bstFwd :: (Int, Int) -> Reflective Void Tree
+bstFwd (lo, hi) | lo > hi = return Leaf
+bstFwd (lo, hi) =
+  frequency
+    [ ( 1, return Leaf),
+      ( 5, do
+        x <- fwdOnly (choose (lo, hi))
+        l <- fwdOnly (bstFwd (lo, x - 1))
+        r <- fwdOnly (bstFwd (x + 1, hi))
+        return (Node l x r) ) ]
   where
-    aux (lo, hi)
-      | lo > hi = return Leaf
-      | otherwise = do
-          oneof
-            [ return Leaf,
-              do
-                x <- fwd (choose (lo, hi))
-                l <- fwd (aux (lo, x - 1))
-                r <- fwd (aux (x + 1, hi))
-                return (Node l x r)
-            ]
-
--- TODO DIFFERENCE the bst that we have in the intro doesnt appear here, bst below is similar,
--- but different. IDK if we wanna have it coded up the same cos if i was looking
--- to the artifact I'd wanna find it exact
--- TODO DIFFERENCE on a similar vein we don't have the bst QuickCheck generator
--- Do we want like a paper examples file so people can see them there and follow
--- the imports to find where the definitions they use are?
--- HG: I don't really know if I want to insist that every bit of the code in the paper appear somewhere
--- in the repo; I think those generators are fine to have in the paper and not the repo.
+    fwdOnly = lmap (\ x -> case x of)
 
 bst :: Reflective Tree Tree
 bst = aux (1, 10)
@@ -616,12 +587,23 @@ infFanOut =
         exact (x : xs)
     ]
 
--- TODO unlabeled missing from code
+data UnLabTree = UnLabLeaf | UnLabBranch UnLabTree UnLabTree deriving Eq
+
+makePrisms ''UnLabTree
+
+unlabeled :: Reflective UnLabTree UnLabTree
+unlabeled =
+  oneof
+    [ exact UnLabLeaf,
+      UnLabBranch
+        <$> focus (_UnLabBranch . _1) unlabeled
+        <*> focus (_UnLabBranch . _2) unlabeled
+    ]
 
 -- main :: IO ()
 -- main = do
---   print =<< QC.generate (gen weirdTree)
---   print =<< QC.generate (gen bstFwd)
+--   print =<< QC.generate (generate weirdTree)
+--   print =<< QC.generate (generate bstFwd)
 --   let ss = fromJust $ unparse bst (Node Leaf 1 (Node Leaf 2 Leaf))
 --   print ss
 --   print (parse bst ss)

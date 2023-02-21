@@ -40,7 +40,7 @@ eval (Div e0 e1) =
         else div <$> eval e0 <*> e
 
 instance Arbitrary Exp where
-  arbitrary = Reflective.gen reflCalc -- Modified
+  arbitrary = Reflective.generate reflCalc -- Modified
   shrink = genericShrink
 
 prop_div :: Exp -> Bool

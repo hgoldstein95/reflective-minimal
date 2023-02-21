@@ -34,7 +34,6 @@ library
       HeapExample
       Hypothesis
       JSONExample
-      JSONTypedExample
       ListExample
       PackageJSONExample
       ParserExample

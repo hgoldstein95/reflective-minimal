@@ -6,11 +6,6 @@ import Data.Char (isAlpha, isNumber)
 import Data.Foldable (Foldable (foldl'))
 import Freer hiding (parse)
 
--- TODO (QUESTION) I think we should label which JSON example we use for the experiment in the
--- paper. Out of interest, does it make a difference if it is typed?
--- HG: We actually don't use the typed one anywhere, that was an experiment. We can delete it as
--- long as we know how to find it in the history if we need it.
-
 token :: Char -> Reflective b ()
 token s = labelled [(['\'', s, '\''], pure ())]
 

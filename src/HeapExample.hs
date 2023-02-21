@@ -90,7 +90,7 @@ prop_ToSortedList (h :: Heap Int) =
     xs = toSortedList h
 
 instance Arbitrary (Heap Int) where
-  arbitrary = Reflective.gen reflHeap -- Modified
+  arbitrary = Reflective.generate reflHeap -- Modified
   shrink = genericShrink
 
 -- Reflective Generator

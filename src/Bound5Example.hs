@@ -39,7 +39,7 @@ size :: T -> Int
 size = length . concat . toList
 
 instance Arbitrary T where
-  arbitrary = Reflective.gen reflT -- Modified
+  arbitrary = Reflective.generate reflT -- Modified
   shrink = genericShrink
 
 int16 :: Reflective Int16 Int16 -- Borrowed from QuickCheck

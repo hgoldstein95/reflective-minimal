@@ -5,7 +5,7 @@
 
 module ListExample where
 
-import Freer (Reflective, gen, integer, listOf, lmap)
+import Freer (Reflective, generate, integer, listOf, lmap)
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)
 
@@ -24,7 +24,7 @@ invariant :: b -> Bool
 invariant = const True
 
 instance Arbitrary IntList where
-  arbitrary = gen reflList -- Modified
+  arbitrary = generate reflList -- Modified
   shrink = genericShrink
 
 -- Reflective Generator

@@ -5,7 +5,7 @@ module Hypothesis where
 import qualified Bound5Example as Bound5
 import qualified CalcExample as Calc
 import Control.Monad (replicateM)
-import Freer (Reflective, gen, validate)
+import Freer (Reflective, generate, validate)
 import qualified Freer
 import qualified HeapExample as Heap
 import qualified ListExample as List
@@ -35,7 +35,7 @@ counterExampleGeneric p inv =
 
 counterExampleReflective :: (Eq a, Show a, Read a) => Reflective a a -> (a -> Bool) -> IO a
 counterExampleReflective g p =
-  quickCheckWithResult (stdArgs {chatty = False, maxSuccess = 10000, maxSize = 30, maxShrinks = 1}) (propertyForAllShrinkShow (gen g) (\v -> let v' = Freer.shrink (not . p) g v in [v' | v /= v']) ((: []) . show) p) >>= \case
+  quickCheckWithResult (stdArgs {chatty = False, maxSuccess = 10000, maxSize = 30, maxShrinks = 1}) (propertyForAllShrinkShow (generate g) (\v -> let v' = Freer.shrink (not . p) g v in [v' | v /= v']) ((: []) . show) p) >>= \case
     Failure {failingTestCase = [v]} -> pure (read v)
     _ -> error "counterExampleReflective: no counterexample found"
 

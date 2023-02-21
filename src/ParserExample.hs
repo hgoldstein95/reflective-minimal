@@ -83,7 +83,7 @@ nonEmpty :: Gen [a] -> Gen [a]
 nonEmpty a = suchThat a (not . null)
 
 instance Arbitrary Lang where
-  arbitrary = Reflective.gen reflLang -- Modified
+  arbitrary = Reflective.generate reflLang -- Modified
   shrink = genericShrink
 
 instance Arbitrary Mod where
