@@ -16,7 +16,7 @@ import           Test.QuickCheck ((==>))
 import qualified Test.QuickCheck as QC
 
 -- local / under test
-import Freer (Reflective, Freer(..), R(..), generate, resize, check
+import Freer (Reflective, Freer(..), R(..), generate, resize, check, Tree(..)
              , bst, hypoTree, unlabelled,)
 import Bound5Example (int16, reflT)
 import CalcExample (reflCalc)
@@ -135,9 +135,10 @@ main = hspec $ do
     -- the same prefix pass the precondition, but then of course are not equal and
     -- fail the rest.
     -- This is an example where completeness is not always desirable.
+  describe "bst satisfies external properties" $ do
+    prop "soundness re bst prop" $ exSound bstProp bst
+    prop "completeness re bst prop" $ exComp bstProp bst
 
-  -- TODO other props:
-  --     - external soundness and completeness for bst
   -- TODO test interps lawful?
   -- TODO think about fan out prop
 
@@ -194,3 +195,22 @@ weakComplete g n
 -- is unlikely to hold. This makes it a challenge to test.
 pureProj :: (Show a, Eq a) => Reflective a a -> a -> a -> QC.Property
 pureProj g a a' = a' `elem` reflect' g a ==> a == a'
+
+-- x ∈ gen g ==> p x
+exSound :: Show a => (a -> Bool) -> Reflective a a ->  QC.NonNegative Int ->  QC.Property
+exSound p g n = QC.forAll
+    (generate (resize (QC.getNonNegative n) g))
+    (\a -> p a)
+
+exComp :: (a -> Bool) -> Reflective a a -> a -> QC.Property
+exComp p g t = p t ==> (not . null) (reflect' g t)
+
+-- What it means to be a valid BST
+bstProp :: Tree -> Bool
+bstProp = aux (1, 10) -- to match our def of bst and keep the size down
+  where
+    aux :: (Int,Int) -> Tree -> Bool
+    aux (_ ,  _)  Leaf = True
+    aux (lo, hi) (Node l x r) = lo <= x && x <= hi
+                              && aux (lo, x - 1) l && aux (x + 1,hi) r
+
