@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
@@ -48,8 +49,11 @@ import Data.Monoid (First)
 import Data.Ord (comparing)
 import Data.Void (Void)
 import GHC.IO (catch, evaluate)
+import GHC.Generics (Generic)
 import qualified Test.LeanCheck as LC
-import Test.QuickCheck (Args (maxSize, maxSuccess), Gen, forAll, quickCheckWith, stdArgs)
+import Test.QuickCheck ( Args (maxSize, maxSuccess), Gen, forAll, quickCheckWith, stdArgs
+                       , Arbitrary, genericShrink)
+import Test.QuickCheck.Arbitrary.Generic (genericArbitrary)
 import qualified Test.QuickCheck as QC
 
 
@@ -518,7 +522,11 @@ validateParse g =
 -- Examples
 
 data Tree = Leaf | Node Tree Int Tree
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
+
+instance Arbitrary Tree where
+  arbitrary = genericArbitrary
+  shrink = genericShrink
 
 makePrisms ''Tree
 

@@ -51,6 +51,7 @@ library
     , data-default
     , directory
     , free
+    , generic-arbitrary
     , leancheck
     , lens
     , logict

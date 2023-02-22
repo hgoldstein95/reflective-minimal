@@ -1,7 +1,8 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE GADTs         #-}
 
-module Spec where
+-- module Spec where
+-- here so you can enter this file with the repl, needs to be commented to test
 
 -- base
 import Data.Maybe (maybeToList)
@@ -29,149 +30,120 @@ import ParserExample (reflVar, reflLang, reflMod, reflFunc, reflStmt, reflExp)
 -- TODO add to paper how this is tested? Or is that too hask specific?
 --   - ~ corresponding to forall
 --   - complete needing aligned (to use check)
+--   - discussion of pureproj difficulties
 
 main :: IO ()
 main = hspec $ do
   -- Testing our example generators:
-  -- TODO uncomment
-  -- describe "Our reflectives are sound" $ do
-  --   -- Freer
-  --   prop "bst" $ soundness bst
-  --   prop "unlabelled" $ soundness unlabelled
-  --   prop "hypoTree" $ soundness hypoTree -- slow
-  --   -- Bound5Example
-  --   prop "int16" $ soundness int16
-  --   prop "reflT" $ soundness reflT
-  --   -- CalcExample
-  --   prop "reflCalc" $ soundness reflCalc
-  --   -- HeapExample
-  --   prop "reflHeap" $ soundness reflHeap
-  --   -- JSONExample
-  --   prop "start" $ soundness start
-  --   prop "object" $ soundness object
-  --   prop "members" $ soundness members
-  --   prop "pair" $ soundness pair
-  --   prop "array" $ soundness array
-  --   prop "elements" $ soundness elements
-  --   prop "value" $ soundness value
-  --   prop "string" $ soundness string
-  --   prop "chars" $ soundness chars
-  --   prop "char_" $ soundness char_
-  --   prop "letter" $ soundness letter
-  --   prop "escapedspecial" $ soundness escapedspecial
-  --   prop "number" $ soundness number
-  --   prop "int_" $ soundness int_
-  --   prop "frac" $ soundness frac
-  --   prop "expo" $ soundness expo
-  --   prop "digits" $ soundness digits
-  --   prop "digit" $ soundness digit
-  --   prop "nonzerodigit" $ soundness nonzerodigit
-  --   prop "e" $ soundness e
-  --   prop "withChecksum" $ soundness withChecksum
-  --   -- ListExample
-  --   prop "reflList" $ soundness reflList
-  --   -- Parser Example
-  --   prop "reflVar" $ soundness reflVar
-  --   prop "reflLang" $ soundness reflLang
-  --   prop "reflMod" $ soundness reflMod
-  --   prop "reflFunc" $ soundness reflFunc
-  --   prop "reflStmt" $ soundness reflStmt
-  --   prop "reflExp" $ soundness reflExp
-  -- describe "Our reflectives are weak complete" $ do
-  --   -- Freer
-  --   prop "bst" $ weakComplete bst
-  --   prop "unlabelled" $ weakComplete unlabelled
-  --   prop "hypoTree" $ weakComplete hypoTree
-  --   -- Bound5Example
-  --   prop "int16" $ weakComplete int16
-  --   prop "reflT" $ weakComplete reflT
-  --   -- CalcExample
-  --   prop "reflCalc" $ weakComplete reflCalc
-  --   -- HeapExample
-  --   prop "reflHeap" $ weakComplete reflHeap
-  --   -- JSONExample
-  --   prop "start" $ weakComplete start
-  --   prop "object" $ weakComplete object
-  --   prop "members" $ weakComplete members
-  --   prop "pair" $ weakComplete pair
-  --   prop "array" $ weakComplete array
-  --   prop "elements" $ weakComplete elements
-  --   prop "value" $ weakComplete value
-  --   prop "string" $ weakComplete string
-  --   prop "chars" $ weakComplete chars
-  --   prop "char_" $ weakComplete char_
-  --   prop "letter" $ weakComplete letter
-  --   prop "escapedspecial" $ weakComplete escapedspecial
-  --   prop "number" $ weakComplete number
-  --   prop "int_" $ weakComplete int_
-  --   prop "frac" $ weakComplete frac
-  --   prop "expo" $ weakComplete expo
-  --   prop "digits" $ weakComplete digits
-  --   prop "digit" $ weakComplete digit
-  --   prop "nonzerodigit" $ weakComplete nonzerodigit
-  --   prop "e" $ weakComplete e
-  --   prop "withChecksum" $ weakComplete withChecksum
-  --   -- ListExample
-  --   prop "reflList" $ weakComplete reflList
-  --   -- Parser Example
-  --   prop "reflVar" $ weakComplete reflVar
-  --   prop "reflLang" $ weakComplete reflLang
-  --   prop "reflMod" $ weakComplete reflMod
-  --   prop "reflFunc" $ weakComplete reflFunc
-  --   prop "reflStmt" $ weakComplete reflStmt
-  --   prop "reflExp" $ weakComplete reflExp
-  describe "Our reflectives satisfy pure proj" $ do
+  describe "Our reflectives are sound" $ do
     -- Freer
-    prop "bst" $ pureProj bst
-    prop "unlabelled" $ pureProj unlabelled
-    prop "hypoTree" $ pureProj hypoTree
+    prop "bst" $ soundness bst
+    prop "unlabelled" $ soundness unlabelled
+    prop "hypoTree" $ soundness hypoTree -- slow
     -- Bound5Example
-    prop "int16" $ pureProj int16 -- TODO gives up
-    prop "reflT" $ pureProj reflT -- TODO gives up
+    prop "int16" $ soundness int16
+    prop "reflT" $ soundness reflT
     -- CalcExample
-    prop "reflCalc" $ pureProj reflCalc -- TODO gives up
+    prop "reflCalc" $ soundness reflCalc
     -- HeapExample
-    prop "reflHeap" $ pureProj reflHeap -- TODO gives up
+    prop "reflHeap" $ soundness reflHeap
     -- JSONExample
-    prop "start" $ pureProj start
-    prop "object" $ pureProj object
-    prop "members" $ pureProj members -- TODO falsified "\"\":true,\"\":null"  "\"\":true"
-    prop "pair" $ pureProj pair -- TODO gives up
-    prop "array" $ pureProj array
-    prop "elements" $ pureProj elements -- TODO falsified "null,\"0@\"" "null"
-    prop "value" $ pureProj value -- TODO gives up
-    prop "string" $ pureProj string
-    prop "chars" $ pureProj chars -- TODO false "\\'" "\\"
-    prop "char_" $ pureProj char_ -- TODO gives up
-    prop "letter" $ pureProj letter -- TODO gives up
-    prop "escapedspecial" $ pureProj escapedspecial
-    prop "number" $ pureProj number -- TODO false "-0068.1e+40" "-00"
-    prop "int_" $ pureProj int_ -- TODO false "-00" "-0"
-    prop "frac" $ pureProj frac -- TODO false ".06" ".0"
-    prop "expo" $ pureProj expo -- TODO false "e04" "e0"
-    prop "digits" $ pureProj digits -- TODO false "00" "0"
-    prop "digit" $ pureProj digit
-    prop "nonzerodigit" $ pureProj nonzerodigit
-    prop "e" $ pureProj e -- TODO false "E+" "E"
-    prop "withChecksum" $ pureProj withChecksum
+    prop "start" $ soundness start
+    prop "object" $ soundness object
+    prop "members" $ soundness members
+    prop "pair" $ soundness pair
+    prop "array" $ soundness array
+    prop "elements" $ soundness elements
+    prop "value" $ soundness value
+    prop "string" $ soundness string
+    prop "chars" $ soundness chars
+    prop "char_" $ soundness char_
+    prop "letter" $ soundness letter
+    prop "escapedspecial" $ soundness escapedspecial
+    prop "number" $ soundness number
+    prop "int_" $ soundness int_
+    prop "frac" $ soundness frac
+    prop "expo" $ soundness expo
+    prop "digits" $ soundness digits
+    prop "digit" $ soundness digit
+    prop "nonzerodigit" $ soundness nonzerodigit
+    prop "e" $ soundness e
+    prop "withChecksum" $ soundness withChecksum
     -- ListExample
-    prop "reflList" $ pureProj reflList -- TODO gives up
+    prop "reflList" $ soundness reflList
     -- Parser Example
-    prop "reflVar" $ pureProj reflVar -- TODO gives up
-    prop "reflLang" $ pureProj reflLang -- TODO slow
-    prop "reflMod" $ pureProj reflMod -- TODO gave up
-    prop "reflFunc" $ pureProj reflFunc -- TODO slow
-    prop "reflStmt" $ pureProj reflStmt -- TODO gave up
-    prop "reflExp" $ pureProj reflExp -- TODO gave up
+    prop "reflVar" $ soundness reflVar
+    prop "reflLang" $ soundness reflLang -- slow
+    prop "reflMod" $ soundness reflMod
+    prop "reflFunc" $ soundness reflFunc -- slow
+    prop "reflStmt" $ soundness reflStmt
+    prop "reflExp" $ soundness reflExp
+  describe "Our reflectives are weak complete" $ do
+    -- Freer
+    prop "bst" $ weakComplete bst
+    prop "unlabelled" $ weakComplete unlabelled
+    prop "hypoTree" $ weakComplete hypoTree -- slow
+    -- Bound5Example
+    prop "int16" $ weakComplete int16
+    prop "reflT" $ weakComplete reflT
+    -- CalcExample
+    prop "reflCalc" $ weakComplete reflCalc
+    -- HeapExample
+    prop "reflHeap" $ weakComplete reflHeap
+    -- JSONExample
+    prop "start" $ weakComplete start
+    prop "object" $ weakComplete object
+    prop "members" $ weakComplete members
+    prop "pair" $ weakComplete pair
+    prop "array" $ weakComplete array
+    prop "elements" $ weakComplete elements
+    prop "value" $ weakComplete value
+    prop "string" $ weakComplete string
+    prop "chars" $ weakComplete chars
+    prop "char_" $ weakComplete char_
+    prop "letter" $ weakComplete letter
+    prop "escapedspecial" $ weakComplete escapedspecial
+    prop "number" $ weakComplete number
+    prop "int_" $ weakComplete int_
+    prop "frac" $ weakComplete frac
+    prop "expo" $ weakComplete expo
+    prop "digits" $ weakComplete digits
+    prop "digit" $ weakComplete digit
+    prop "nonzerodigit" $ weakComplete nonzerodigit
+    prop "e" $ weakComplete e
+    prop "withChecksum" $ weakComplete withChecksum
+    -- ListExample
+    prop "reflList" $ weakComplete reflList
+    -- Parser Example
+    prop "reflVar" $ weakComplete reflVar
+    prop "reflLang" $ weakComplete reflLang -- slow
+    prop "reflMod" $ weakComplete reflMod
+    prop "reflFunc" $ weakComplete reflFunc -- slow
+    prop "reflStmt" $ weakComplete reflStmt
+    prop "reflExp" $ weakComplete reflExp
+  describe "Our reflectives satisfy pure proj" $
+    -- NOTE:- because this property is challenging to test, which is why we will
+    -- only demo it on bst.
+    prop "bst" $ pureProj bst
+    -- NOTE:- In fact most of our JSON reflectives do not fulfil this property.
+    -- They can only be considered "intentionally incomplete".
+    -- This is so that the implementation can be useable in terms of efficiency.
+    -- At every step, it checks a prefix but never the whole suffix, The generator
+    -- is essentially parsing in reverse, and no individual sub-generator can enforce
+    -- that the whole input is consumed.
+    -- This causes this property to fail, because two different inputs that have
+    -- the same prefix pass the precondition, but then of course are not equal and
+    -- fail the rest.
+    -- This is an example where completeness is not always desirable.
+
   -- TODO other props:
-  --     - pure
   --     - external soundness and completeness for bst
   -- TODO test interps lawful?
   -- TODO think about fan out prop
 
--- NOTE:
--- dont test infFanOut cos the point of that is that it doesnt stop
--- bstFwd not tested cos its not aligned
+-- NOTES:
+--   * dont test infFanOut cos the point of that is that it doesnt stop
+--   * bstFwd not tested cos its not aligned
 
 -- Special interp to facilitate testing:
 reflect' :: Reflective b a -> b -> [a]
@@ -214,13 +186,11 @@ weakComplete g n
     (\a -> a `elem` reflect' g a ==> check g a)
 
 -- a’ ∈ reflect’ g a ==> a = a’
-pureProj :: (Show a, Eq a) => Reflective a a -> QC.NonNegative Int -> QC.Property
-pureProj g n
-  = QC.forAll gen
-    (\a -> QC.forAll gen
-      (\ a' -> a' `elem` reflect' g a ==> a == a'))
-    where
-      gen = (generate (resize (QC.getNonNegative n) g))
--- e "E+" "E"
--- i think the issue is that E+ starts with E
--- yeah its the same with all the other issues
+-- "if the reflective can reflect the input, then all of the things we get out are equal"
+-- Unlike the other properties, this must use a generic generator so that we can
+-- find out if there are things that cannot be generated by the reflective, but
+-- can be reflected by it.
+-- The issue with this property is that it often fails vacuously, because the precondition
+-- is unlikely to hold. This makes it a challenge to test.
+pureProj :: (Show a, Eq a) => Reflective a a -> a -> a -> QC.Property
+pureProj g a a' = a' `elem` reflect' g a ==> a == a'
