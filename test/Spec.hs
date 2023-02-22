@@ -9,10 +9,11 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
 
 -- QuickCheck
+import           Test.QuickCheck ((==>))
 import qualified Test.QuickCheck as QC
 
 -- local / under test
-import Freer (Reflective, Freer(..), R(..), generate, resize
+import Freer (Reflective, Freer(..), R(..), generate, resize, check
              , bst, hypoTree, unlabelled,)
 import Bound5Example (int16, reflT)
 import CalcExample (reflCalc)
@@ -23,14 +24,18 @@ import JSONExample (start, object, members, pair, array, elements, value, string
 import ListExample (reflList)
 import ParserExample (reflVar, reflLang, reflMod, reflFunc, reflStmt, reflExp)
 
+-- TODO add to paper how this is tested? Or is that too hask specific?
+--   - ~ corresponding to forall
+--   - complete needing aligned (to use check)
+
 main :: IO ()
-main = hspec $
+main = hspec $ do
   -- Testing our example generators:
   describe "Our reflectives are sound" $ do
     -- Freer
     prop "bst" $ soundness bst
     prop "unlabelled" $ soundness unlabelled
-    prop "hypoTree" $ soundness hypoTree
+    prop "hypoTree" $ soundness hypoTree -- slow
     -- Bound5Example
     prop "int16" $ soundness int16
     prop "reflT" $ soundness reflT
@@ -69,8 +74,55 @@ main = hspec $
     prop "reflFunc" $ soundness reflFunc
     prop "reflStmt" $ soundness reflStmt
     prop "reflExp" $ soundness reflExp
-  -- TODO other props
+  -- Testing our example generators:
+  describe "Our reflectives are weak complete" $ do
+    -- Freer
+    prop "bst" $ weakComplete bst
+    prop "unlabelled" $ weakComplete unlabelled
+    prop "hypoTree" $ weakComplete hypoTree
+    -- Bound5Example
+    prop "int16" $ weakComplete int16
+    prop "reflT" $ weakComplete reflT
+    -- CalcExample
+    prop "reflCalc" $ weakComplete reflCalc
+    -- HeapExample
+    prop "reflHeap" $ weakComplete reflHeap
+    -- JSONExample
+    prop "start" $ weakComplete start
+    prop "object" $ weakComplete object
+    prop "members" $ weakComplete members
+    prop "pair" $ weakComplete pair
+    prop "array" $ weakComplete array
+    prop "elements" $ weakComplete elements
+    prop "value" $ weakComplete value
+    prop "string" $ weakComplete string
+    prop "chars" $ weakComplete chars
+    prop "char_" $ weakComplete char_
+    prop "letter" $ weakComplete letter
+    prop "escapedspecial" $ weakComplete escapedspecial
+    prop "number" $ weakComplete number
+    prop "int_" $ weakComplete int_
+    prop "frac" $ weakComplete frac
+    prop "expo" $ weakComplete expo
+    prop "digits" $ weakComplete digits
+    prop "digit" $ weakComplete digit
+    prop "nonzerodigit" $ weakComplete nonzerodigit
+    prop "e" $ weakComplete e
+    prop "withChecksum" $ weakComplete withChecksum
+    -- ListExample
+    prop "reflList" $ weakComplete reflList
+    -- Parser Example
+    prop "reflVar" $ weakComplete reflVar
+    prop "reflLang" $ weakComplete reflLang
+    prop "reflMod" $ weakComplete reflMod
+    prop "reflFunc" $ weakComplete reflFunc
+    prop "reflStmt" $ weakComplete reflStmt
+    prop "reflExp" $ weakComplete reflExp
+  -- TODO other props:
+  --     - pure
+  --     - external soundness and completeness for bst
   -- TODO test interps lawful?
+  -- TODO think about fan out prop
 
 -- NOTE:
 -- dont test infFanOut cos the point of that is that it doesnt stop
@@ -104,3 +156,14 @@ soundness g n
   = QC.forAll
       (generate (resize (QC.getNonNegative n) g))
       (not . null . reflect' (resize (QC.getNonNegative n) g))
+
+-- a ∈ reflect’ g b ==> a ∼ generate g
+-- adapted to be aligned for testing, for pen and paper proof, we want unaligned tho
+-- TODO QUESTION aligned right?
+-- TODO QUESTION i also cant tell if using the forall is cheating, but also we get too many
+-- discarded tests otherwise
+weakComplete :: (Show a, Eq a) => Reflective a a -> QC.NonNegative Int -> QC.Property
+weakComplete g n
+  = QC.forAll
+    (generate (resize (QC.getNonNegative n) g))
+    (\a -> a `elem` reflect' g a ==> check g a)
