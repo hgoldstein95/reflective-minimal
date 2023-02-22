@@ -1,93 +1,106 @@
 {-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE GADTs         #-}
 
--- TODO: this file has become out of date and doesnt compile. It should be updated
---       and have the properties we list in it and testable
+-- base
+import Data.Maybe (maybeToList)
 
-import Data.List (nub)
-import Freer (Reflective, choices, choicesS, comap, exact, fix, gen, label, magic, pick, regen, regenS)
-import Test.QuickCheck (Gen)
+-- hspec
+import Test.Hspec
+import Test.Hspec.QuickCheck
+
+-- QuickCheck
 import qualified Test.QuickCheck as QC
 
-data Tree = Leaf | Node Tree Int Tree
-  deriving (Show, Eq, Ord)
-
-reflInt :: (Int, Int) -> Reflective Int Int
-reflInt (lo, hi) = pick [label (show i) (exact i) | i <- [lo .. hi]]
-
-genInt :: (Int, Int) -> Gen Int
-genInt (lo, hi) = QC.elements [lo .. hi]
-
-reflTree :: Reflective Tree Tree
-reflTree = fix aux (10 :: Int)
-  where
-    aux self n
-      | n == 0 = exact Leaf
-      | otherwise = do
-          pick
-            [ exact Leaf,
-              do
-                x <- comap (\case Leaf -> Nothing; Node _ x _ -> Just x) (reflInt (1, 10))
-                l <- comap (\case Leaf -> Nothing; Node l _ _ -> Just l) (self (n - 1))
-                r <- comap (\case Leaf -> Nothing; Node _ _ r -> Just r) (self (n - 1))
-                pure (Node l x r),
-              exact (Node Leaf 2 Leaf)
-            ]
-
-genBST :: Gen Tree
-genBST = aux (1, 10)
-  where
-    aux (lo, hi)
-      | lo > hi = return Leaf
-      | otherwise = do
-          QC.oneof
-            [ return Leaf,
-              do
-                x <- genInt (lo, hi)
-                l <- aux (lo, x - 1)
-                r <- aux (x + 1, hi)
-                return (Node l x r)
-            ]
-
-reflBST :: Reflective Tree Tree
-reflBST = fix aux (1, 10)
-  where
-    aux self (lo, hi)
-      | lo > hi = return Leaf
-      | otherwise = do
-          pick
-            [ return Leaf,
-              do
-                x <- magic (reflInt (lo, hi))
-                l <- magic (self (lo, x - 1))
-                r <- magic (self (x + 1, hi))
-                return (Node l x r)
-            ]
-
-reflBSTgood :: Reflective Tree Tree
-reflBSTgood = fix aux (1, 10)
-  where
-    aux self (lo, hi)
-      | lo > hi = exact Leaf
-      | otherwise = do
-          pick
-            [ label "leaf" (exact Leaf),
-              label "node" $ do
-                x <- comap (\case Leaf -> Nothing; (Node _ x _) -> Just x) (reflInt (lo, hi))
-                l <- comap (\case Leaf -> Nothing; Node l _ _ -> Just l) (self (lo, x - 1))
-                r <- comap (\case Leaf -> Nothing; Node _ _ r -> Just r) (self (x + 1, hi))
-                exact (Node l x r)
-            ]
+-- local / under test
+import Freer (Reflective, Freer(..), R(..), generate, resize
+             , bst, hypoTree, unlabelled,)
+import Bound5Example (int16, reflT)
+import CalcExample (reflCalc)
+import HeapExample (reflHeap)
+import JSONExample (start, object, members, pair, array, elements, value, string
+                   , chars, char_, letter, escapedspecial, number, int_, frac, expo
+                   , digits, digit, nonzerodigit, e, withChecksum)
+import ListExample (reflList)
+import ParserExample (reflVar, reflLang, reflMod, reflFunc, reflStmt, reflExp)
 
 main :: IO ()
-main = do
-  print (nub $ choices reflTree (Node Leaf 1 (Node Leaf 2 Leaf)))
-  print =<< QC.generate (gen reflTree)
-  print =<< QC.generate genBST
-  let cs = head . nub $ choices reflBSTgood (Node Leaf 1 (Node Leaf 2 Leaf))
-  print cs
-  print (regen reflBSTgood cs)
-  let ss = head . nub $ choicesS reflBSTgood (Node Leaf 1 (Node Leaf 2 Leaf))
-  print ss
-  print (regenS reflBSTgood ss)
-  print (nub $ choices reflBST (Node Leaf 1 (Node Leaf 2 Leaf)))
+main = hspec $
+  -- Testing our example generators:
+  describe "Our reflectives are sound" $ do
+    -- Freer
+    prop "bst" $ soundness bst
+    prop "unlabelled" $ soundness unlabelled
+    prop "hypoTree" $ soundness hypoTree
+    -- Bound5Example
+    prop "int16" $ soundness int16
+    prop "reflT" $ soundness reflT
+    -- CalcExample
+    prop "reflCalc" $ soundness reflCalc
+    -- HeapExample
+    prop "reflHeap" $ soundness reflHeap
+    -- JSONExample
+    prop "start" $ soundness start
+    prop "object" $ soundness object
+    prop "members" $ soundness members
+    prop "pair" $ soundness pair
+    prop "array" $ soundness array
+    prop "elements" $ soundness elements
+    prop "value" $ soundness value
+    prop "string" $ soundness string
+    prop "chars" $ soundness chars
+    prop "char_" $ soundness char_
+    prop "letter" $ soundness letter
+    prop "escapedspecial" $ soundness escapedspecial
+    prop "number" $ soundness number
+    prop "int_" $ soundness int_
+    prop "frac" $ soundness frac
+    prop "expo" $ soundness expo
+    prop "digits" $ soundness digits
+    prop "digit" $ soundness digit
+    prop "nonzerodigit" $ soundness nonzerodigit
+    prop "e" $ soundness e
+    prop "withChecksum" $ soundness withChecksum
+    -- ListExample
+    prop "reflList" $ soundness reflList
+    -- Parser Example
+    prop "reflVar" $ soundness reflVar
+    prop "reflLang" $ soundness reflLang
+    prop "reflMod" $ soundness reflMod
+    prop "reflFunc" $ soundness reflFunc
+    prop "reflStmt" $ soundness reflStmt
+    prop "reflExp" $ soundness reflExp
+  -- TODO other props
+  -- TODO test interps lawful?
+
+-- NOTE:
+-- dont test infFanOut cos the point of that is that it doesnt stop
+-- bstFwd not tested cos its not aligned
+
+-- Special interp to facilitate testing:
+reflect' :: Reflective b a -> b -> [a]
+reflect' g v = interp g v Nothing
+  where
+    -- ref -> value -> maybe size -> values
+    interp :: Reflective b a -> b -> Maybe Int -> [a]
+    interp (Return x) _ _ = return x
+    interp (Bind x f) b s = interpR x b s >>= \y -> interp (f y) b s
+
+    interpR :: R b a -> b -> Maybe Int -> [a]
+    interpR (Pick  xs) b s = concat [interp x b s | (_, _, x) <- xs]
+    interpR (Lmap f x) b s = interpR x (f b) s
+    interpR (Prune  x) b s = maybeToList b >>= \b' -> interpR x b' s
+    interpR (ChooseInteger (lo, hi)) b _
+      | lo <= b && b <= hi = pure b
+      | otherwise = []
+    interpR GetSize _ (Just s) = return s
+    interpR GetSize _ Nothing = pure 30
+    interpR (Resize s x) b _ = interpR x b (Just s)
+
+-- Properties:
+
+-- a ~ generate g ==> (not . null) (reflect' g a)
+soundness :: Show a => Reflective a a -> QC.NonNegative Int -> QC.Property
+soundness g n
+  = QC.forAll
+      (generate (resize (QC.getNonNegative n) g))
+      (not . null . reflect' (resize (QC.getNonNegative n) g))

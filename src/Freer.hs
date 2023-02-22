@@ -587,17 +587,17 @@ infFanOut =
         exact (x : xs)
     ]
 
-data UnLabTree = UnLabLeaf | UnLabBranch UnLabTree UnLabTree deriving Eq
+data UnLabTree = UnLabLeaf | UnLabBranch UnLabTree UnLabTree deriving (Eq, Show)
 
 makePrisms ''UnLabTree
 
-unlabeled :: Reflective UnLabTree UnLabTree
-unlabeled =
+unlabelled :: Reflective UnLabTree UnLabTree
+unlabelled =
   oneof
     [ exact UnLabLeaf,
       UnLabBranch
-        <$> focus (_UnLabBranch . _1) unlabeled
-        <*> focus (_UnLabBranch . _2) unlabeled
+        <$> focus (_UnLabBranch . _1) unlabelled
+        <*> focus (_UnLabBranch . _2) unlabelled
     ]
 
 -- main :: IO ()
