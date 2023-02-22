@@ -139,12 +139,13 @@ main = hspec $ do
     prop "soundness re bst prop" $ exSound bstProp bst
     prop "completeness re bst prop" $ exComp bstProp bst
 
-  -- TODO test interps lawful?
   -- TODO think about fan out prop
 
 -- NOTES:
 --   * dont test infFanOut cos the point of that is that it doesnt stop
 --   * bstFwd not tested cos its not aligned
+--   * Can't test interps cos they require Eq / Arbitrary instances for things that
+--     dont have them e.g. Eq for Gen a, or Arb for Reflective
 
 -- Special interp to facilitate testing:
 reflect' :: Reflective b a -> b -> [a]
@@ -213,4 +214,3 @@ bstProp = aux (1, 10) -- to match our def of bst and keep the size down
     aux (_ ,  _)  Leaf = True
     aux (lo, hi) (Node l x r) = lo <= x && x <= hi
                               && aux (lo, x - 1) l && aux (x + 1,hi) r
-
