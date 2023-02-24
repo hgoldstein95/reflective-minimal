@@ -24,6 +24,8 @@ import Text.Printf
     formatString,
     vFmt,
   )
+import Test.QuickCheck ( Arbitrary(..), genericShrink)
+import Test.QuickCheck.Arbitrary.Generic (genericArbitrary)
 
 ------------------------------------------
 -- DEFINITIONS
@@ -33,6 +35,10 @@ import Text.Printf
 data Type = Base | TBool | Fun Type Type | TVar Int | ForAll Type
   {- end type -}
   deriving (Eq, Ord, Generic)
+
+instance Arbitrary Type where
+  arbitrary = genericArbitrary
+  shrink = genericShrink
 
 {- begin expr -}
 data Expr
@@ -47,6 +53,10 @@ data Expr
   | TApp Expr Type
   {- end expr -}
   deriving (Eq, Ord, Generic)
+
+instance Arbitrary Expr where
+  arbitrary = genericArbitrary
+  shrink = genericShrink
 
 makePrisms ''Type
 makePrisms ''Expr

@@ -26,6 +26,7 @@ import JSONExample (start, object, members, pair, array, elements, value, string
                    , digits, digit, nonzerodigit, e, withChecksum)
 import ListExample (reflList)
 import ParserExample (reflVar, reflLang, reflMod, reflFunc, reflStmt, reflExp)
+import SystemFExample (genExpr)
 
 -- TODO add to paper how this is tested? Or is that too hask specific?
 --   - ~ corresponding to forall
@@ -78,6 +79,7 @@ main = hspec $ do
     prop "reflFunc" $ soundness reflFunc -- slow
     prop "reflStmt" $ soundness reflStmt
     prop "reflExp" $ soundness reflExp
+    prop "systemF" $ soundness (genExpr 10) -- TODO fails
   describe "Our reflectives are weak complete" $ do
     -- Freer
     prop "bst" $ weakComplete bst
@@ -121,10 +123,12 @@ main = hspec $ do
     prop "reflFunc" $ weakComplete reflFunc -- slow
     prop "reflStmt" $ weakComplete reflStmt
     prop "reflExp" $ weakComplete reflExp
-  describe "Our reflectives satisfy pure proj" $
+    prop "systemF" $ weakComplete (genExpr 10)
+  describe "Our reflectives satisfy pure proj" $ do
     -- NOTE:- because this property is challenging to test, which is why we will
     -- only demo it on bst.
     prop "bst" $ pureProj bst
+    prop "systemF" $ pureProj (genExpr 10) -- TODO fails, often vacuously, but sometimes with prefix issue
     -- NOTE:- In fact most of our JSON reflectives do not fulfil this property.
     -- They can only be considered "intentionally incomplete".
     -- This is so that the implementation can be useable in terms of efficiency.
@@ -194,7 +198,7 @@ weakComplete g n
 -- can be reflected by it.
 -- The issue with this property is that it often fails vacuously, because the precondition
 -- is unlikely to hold. This makes it a challenge to test.
-pureProj :: (Show a, Eq a) => Reflective a a -> a -> a -> QC.Property
+pureProj :: (Eq a) => Reflective a a -> a -> a -> QC.Property
 pureProj g a a' = a' `elem` reflect' g a ==> a == a'
 
 -- x ∈ gen g ==> p x
