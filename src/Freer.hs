@@ -278,8 +278,8 @@ weighted g inv ws = aux g ws 100
       y <- interpR x w s
       aux (f y) w s
 
-probabilityOf :: Reflective a a -> [a] -> [(String, Int)]
-probabilityOf g =
+weightsFor :: Reflective a a -> [a] -> [(String, Int)]
+weightsFor g =
   map (\xs -> (head xs, length xs))
     . group
     . sort
@@ -287,10 +287,10 @@ probabilityOf g =
     . mapMaybe (unparse g)
 
 byExample :: Reflective a a -> [a] -> Gen a
-byExample g xs = weighted g False (\s -> fromMaybe 0 (lookup s (probabilityOf g xs)))
+byExample g xs = weighted g False (\s -> fromMaybe 0 (lookup s (weightsFor g xs)))
 
 byExampleInv :: Reflective a a -> [a] -> Gen a
-byExampleInv g xs = weighted g True (\s -> fromMaybe 0 (lookup s (probabilityOf g xs)))
+byExampleInv g xs = weighted g True (\s -> fromMaybe 0 (lookup s (weightsFor g xs)))
 
 -- note that in the paper this appears as
 -- enumerate :: Reflective b a -> [[a]]
