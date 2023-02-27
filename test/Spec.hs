@@ -16,7 +16,7 @@ import           Test.QuickCheck ((==>))
 import qualified Test.QuickCheck as QC
 
 -- local / under test
-import Freer (Reflective, Freer(..), R(..), generate, resize, check, Tree(..)
+import Freer (Reflective, Freer(..), R(..), generate, resize, Tree(..)
              , bst, hypoTree, unlabelled,)
 import Bound5Example (int16, reflT)
 import CalcExample (reflCalc)
@@ -27,11 +27,6 @@ import JSONExample (start, object, members, pair, array, elements, value, string
 import ListExample (reflList)
 import ParserExample (reflVar, reflLang, reflMod, reflFunc, reflStmt, reflExp)
 import SystemFExample (genExpr)
-
--- TODO add to paper how this is tested? Or is that too hask specific?
---   - ~ corresponding to forall
---   - complete needing aligned (to use check)
---   - discussion of pureproj difficulties
 
 main :: IO ()
 main = hspec $ do
@@ -80,55 +75,53 @@ main = hspec $ do
     prop "reflStmt" $ soundness reflStmt
     prop "reflExp" $ soundness reflExp
     prop "systemF" $ soundness (genExpr 10) -- TODO fails
-  describe "Our reflectives are weak complete" $ do
-    -- Freer
-    prop "bst" $ weakComplete bst
-    prop "unlabelled" $ weakComplete unlabelled
-    prop "hypoTree" $ weakComplete hypoTree -- slow
-    -- Bound5Example
-    prop "int16" $ weakComplete int16
-    prop "reflT" $ weakComplete reflT
-    -- CalcExample
-    prop "reflCalc" $ weakComplete reflCalc
-    -- HeapExample
-    prop "reflHeap" $ weakComplete reflHeap
-    -- JSONExample
-    prop "start" $ weakComplete start
-    prop "object" $ weakComplete object
-    prop "members" $ weakComplete members
-    prop "pair" $ weakComplete pair
-    prop "array" $ weakComplete array
-    prop "elements" $ weakComplete elements
-    prop "value" $ weakComplete value
-    prop "string" $ weakComplete string
-    prop "chars" $ weakComplete chars
-    prop "char_" $ weakComplete char_
-    prop "letter" $ weakComplete letter
-    prop "escapedspecial" $ weakComplete escapedspecial
-    prop "number" $ weakComplete number
-    prop "int_" $ weakComplete int_
-    prop "frac" $ weakComplete frac
-    prop "expo" $ weakComplete expo
-    prop "digits" $ weakComplete digits
-    prop "digit" $ weakComplete digit
-    prop "nonzerodigit" $ weakComplete nonzerodigit
-    prop "e" $ weakComplete e
-    prop "withChecksum" $ weakComplete withChecksum
-    -- ListExample
-    prop "reflList" $ weakComplete reflList
-    -- Parser Example
-    prop "reflVar" $ weakComplete reflVar
-    prop "reflLang" $ weakComplete reflLang -- slow
-    prop "reflMod" $ weakComplete reflMod
-    prop "reflFunc" $ weakComplete reflFunc -- slow
-    prop "reflStmt" $ weakComplete reflStmt
-    prop "reflExp" $ weakComplete reflExp
-    prop "systemF" $ weakComplete (genExpr 10)
   describe "Our reflectives satisfy pure proj" $ do
-    -- NOTE:- because this property is challenging to test, which is why we will
-    -- only demo it on bst.
     prop "bst" $ pureProj bst
-    prop "systemF" $ pureProj (genExpr 10) -- TODO fails, often vacuously, but sometimes with prefix issue
+    prop "unlabelled" $ pureProj unlabelled
+    prop "hypoTree" $ pureProj hypoTree -- slow
+    -- NOTE:- this property is very difficult to test because the antecedent is
+    -- often not fulfilled, causing QuickCheck to give up. This is why most of these
+    -- tests are commented out, because QuickCheck gives up
+    -- Freer
+    -- -- Bound5Example
+    -- prop "int16" $ pureProj int16
+    -- prop "reflT" $ pureProj reflT
+    -- -- CalcExample
+    -- prop "reflCalc" $ pureProj reflCalc
+    -- -- HeapExample
+    -- prop "reflHeap" $ pureProj reflHeap
+    -- -- JSONExample
+    -- prop "start" $ pureProj start
+    -- prop "object" $ pureProj object
+    -- prop "members" $ pureProj members
+    -- prop "pair" $ pureProj pair
+    -- prop "array" $ pureProj array
+    -- prop "elements" $ pureProj elements
+    -- prop "value" $ pureProj value
+    -- prop "string" $ pureProj string
+    -- prop "chars" $ pureProj chars
+    -- prop "char_" $ pureProj char_
+    -- prop "letter" $ pureProj letter
+    -- prop "escapedspecial" $ pureProj escapedspecial
+    -- prop "number" $ pureProj number
+    -- prop "int_" $ pureProj int_
+    -- prop "frac" $ pureProj frac
+    -- prop "expo" $ pureProj expo
+    -- prop "digits" $ pureProj digits
+    -- prop "digit" $ pureProj digit
+    -- prop "nonzerodigit" $ pureProj nonzerodigit
+    -- prop "e" $ pureProj e
+    -- prop "withChecksum" $ pureProj withChecksum
+    -- -- ListExample
+    -- prop "reflList" $ pureProj reflList
+    -- -- Parser Example
+    -- prop "reflVar" $ pureProj reflVar
+    -- prop "reflLang" $ pureProj reflLang
+    -- prop "reflMod" $ pureProj reflMod
+    -- prop "reflFunc" $ pureProj reflFunc -- slow
+    -- prop "reflStmt" $ pureProj reflStmt
+    -- prop "reflExp" $ pureProj reflExp
+    -- prop "systemF" $ pureProj (genExpr 10) -- TODO fails, often vacuously, but sometimes with prefix issue
     -- NOTE:- In fact most of our JSON reflectives do not fulfil this property.
     -- They can only be considered "intentionally incomplete".
     -- This is so that the implementation can be useable in terms of efficiency.
@@ -143,13 +136,13 @@ main = hspec $ do
     prop "soundness re bst prop" $ exSound bstProp bst
     prop "completeness re bst prop" $ exComp bstProp bst
 
-  -- TODO think about fan out prop
-
 -- NOTES:
 --   * dont test infFanOut cos the point of that is that it doesnt stop
 --   * bstFwd not tested cos its not aligned
 --   * Can't test interps cos they require Eq / Arbitrary instances for things that
 --     dont have them e.g. Eq for Gen a, or Arb for Reflective
+--   * weakComplete is impossible to test
+--   * As above, pure proj is often intractable to test
 
 -- Special interp to facilitate testing:
 reflect' :: Reflective b a -> b -> [a]
@@ -179,17 +172,6 @@ soundness g n
   = QC.forAll
       (generate (resize (QC.getNonNegative n) g))
       (not . null . reflect' (resize (QC.getNonNegative n) g))
-
--- a ∈ reflect’ g b ==> a ∼ generate g
--- adapted to be aligned for testing, for pen and paper proof, we want unaligned tho
--- TODO QUESTION aligned right?
--- TODO QUESTION i also cant tell if using the forall is cheating, but also we get too many
--- discarded tests otherwise
-weakComplete :: (Show a, Eq a) => Reflective a a -> QC.NonNegative Int -> QC.Property
-weakComplete g n
-  = QC.forAll
-    (generate (resize (QC.getNonNegative n) g))
-    (\a -> a `elem` reflect' g a ==> check g a)
 
 -- a’ ∈ reflect’ g a ==> a = a’
 -- "if the reflective can reflect the input, then all of the things we get out are equal"

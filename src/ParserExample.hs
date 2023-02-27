@@ -28,6 +28,7 @@ import Test.QuickCheck
     genericShrink,
     suchThat,
   )
+import Test.QuickCheck.Arbitrary.Generic (genericArbitrary)
 import Prelude hiding (showList)
 
 -- From SmartCheck
@@ -83,30 +84,26 @@ nonEmpty :: Gen [a] -> Gen [a]
 nonEmpty a = suchThat a (not . null)
 
 instance Arbitrary Lang where
-  arbitrary = Reflective.generate reflLang -- Modified
+  arbitrary = genericArbitrary
   shrink = genericShrink
 
 instance Arbitrary Mod where
-  arbitrary = undefined
-
+  arbitrary = genericArbitrary
   shrink = genericShrink
 
 instance Arbitrary Var where
-  arbitrary = undefined
+  arbitrary = genericArbitrary
 
 instance Arbitrary Func where
-  arbitrary = undefined
-
+  arbitrary = genericArbitrary
   shrink = genericShrink
 
 instance Arbitrary Stmt where
-  arbitrary = undefined
-
+  arbitrary = genericArbitrary
   shrink = genericShrink
 
 instance Arbitrary Exp where
-  arbitrary = undefined
-
+  arbitrary = genericArbitrary
   shrink = genericShrink
 
 parens :: String -> String
@@ -342,8 +339,14 @@ size (Lang m f) = sumit sizem m + sumit sizef f
       Or e0 e1 -> 1 + sizee e0 + sizee e1
     sumit sz ls = sum (map sz ls)
 
+sizeGL :: GenLang -> Int
+sizeGL (GL l) = size l
+
 prop_Parse :: Lang -> Bool
 prop_Parse e = read' (show' e) == e
+
+prop_ParseGL :: GenLang -> Bool
+prop_ParseGL e = read' (show' e) == e
 
 invariant :: a -> Bool
 invariant = const True
@@ -397,3 +400,21 @@ reflExp = Reflective.sized go
               (100, Mul <$> Reflective.focus (_Mul . _1) g <*> Reflective.focus (_Mul . _2) g),
               (100, Div <$> Reflective.focus (_Div . _1) g <*> Reflective.focus (_Div . _2) g)
             ]
+
+-- newtype wrapper around Lang, so it can be tested without generic arb instance
+newtype GenLang = GL Lang deriving (Show, Read, Generic, Eq)
+
+instance Show' GenLang where
+  show' (GL x) = show' x
+
+instance Read' GenLang where
+  read' x = GL $ read' x
+
+makePrisms ''GenLang
+
+reflGL :: Reflective GenLang GenLang
+reflGL = GL <$> Reflective.focus _GL reflLang
+
+instance Arbitrary GenLang where
+  arbitrary = Reflective.generate reflGL -- Modified
+  shrink = genericShrink

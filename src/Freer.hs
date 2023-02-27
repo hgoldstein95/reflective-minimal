@@ -613,7 +613,7 @@ findMaxFO' = maximumBy (\(x,_) (y,_) -> compare x y) . fmap (\xs -> (length xs, 
            . group . sort . enum
 
 -- the above are obviously too slow to be tractable on any read reflectives, but
--- the purpose of a property is to clearly explain what something is, not implement
+-- the purpose of this property is to clearly explain what fanout is, not implement
 -- it efficiently
 
 infFanOut :: Reflective [Int] [Int]
@@ -627,7 +627,11 @@ infFanOut =
         exact (x : xs)
     ]
 
-data UnLabTree = UnLabLeaf | UnLabBranch UnLabTree UnLabTree deriving (Eq, Show)
+data UnLabTree = UnLabLeaf | UnLabBranch UnLabTree UnLabTree deriving (Eq, Show, Generic)
+
+instance Arbitrary UnLabTree where
+  arbitrary = genericArbitrary
+  shrink = genericShrink
 
 makePrisms ''UnLabTree
 
