@@ -5,7 +5,7 @@ import Data.Bits (xor)
 import Data.Foldable (Foldable (foldl'))
 import Data.List (intercalate)
 import Data.Maybe (fromMaybe)
-import Freer (generate, probabilityOf, weighted)
+import Freer (generate, weightsFor, weighted)
 import JSONExample (withChecksum)
 import System.Directory (getDirectoryContents)
 import qualified Test.QuickCheck as QC
@@ -18,7 +18,7 @@ main :: IO ()
 main = do
   files <- drop 2 <$> getDirectoryContents "analysis/json"
   jsons <- mapM (readFile . ("analysis/json/" ++)) files
-  let w = probabilityOf withChecksum (map fixup jsons)
+  let w = weightsFor withChecksum (map fixup jsons)
   print w
   writeFile "analysis/weighted.json" . intercalate "\n" =<< replicateM 1000 (QC.generate (weighted withChecksum False (fromMaybe 0 . (`lookup` w))))
   writeFile "analysis/unweighted.json" . intercalate "\n" =<< replicateM 1000 (QC.generate (generate withChecksum))
