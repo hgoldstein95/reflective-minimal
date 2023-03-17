@@ -56,7 +56,6 @@ import Test.QuickCheck ( Args (maxSize, maxSuccess), Gen, forAll, quickCheckWith
 import Test.QuickCheck.Arbitrary.Generic (genericArbitrary)
 import qualified Test.QuickCheck as QC
 
-
 -- Core Definitions
 
 data Freer f a where
@@ -484,6 +483,12 @@ complete g v = do
 
 -- Other Functions
 
+-- example for slides
+containsOne :: Tree -> Bool
+containsOne Leaf = False
+containsOne (Node _ 1 _) = True
+containsOne (Node l _ r) = containsOne l || containsOne r
+
 shrink :: (a -> Bool) -> Reflective a a -> a -> a
 shrink p g =
   fromMaybe (error "shrink: no solution")
@@ -667,3 +672,35 @@ unlabelled =
 --   let t = n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf)
 --   print (choices hypoTree t)
 --   print $ shrink unbalanced hypoTree t
+
+-- examples people at Chalmers had questions about
+
+-- --------
+
+-- 2d10s
+-- sampling two random numbers then adding them together
+-- Q = what is the correct annotation?
+-- A = no annotation type checks, but not sound or complete, no bwd info
+--     we can add the correct annotation to the second comap, but that still leaves
+--     us in the lurch going bwd as they dont both have annotations
+d10s :: Reflective Int Int
+d10s = do
+  d1 <- comap undefined (choose (1,10))
+  d2 <- comap (\total -> Just $ total - d1) (choose (1,10))
+  return (d1+d2)
+
+-- gen list then sort
+-- Same Q = what is the correct annotation?
+-- A = in this case, no annotation or id as the annotation (if the list is already
+--     sorted sort == id), is sound, but not complete
+-- sound = only wants that there is atleast one sequence of choices that could have
+--         led to the value, so the id suffices as it covers the case where the
+--         list is already sorted
+-- pure proj = this property is failing vacuously cos the chance that the list is
+--             already sorted is so small
+-- Q what makes this different from the prev example
+-- A = no info is missing -- the reordering of the list still preserves all the elms
+genThenSort :: Reflective [Int] [Int]
+genThenSort = do
+  unsorted <- listOf integer
+  return (sort unsorted)
