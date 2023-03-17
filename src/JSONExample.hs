@@ -244,11 +244,11 @@ withChecksum = do
   let c = "}"
   parse a >>- \_ ->
     start >>- \payload -> do
-      let checksum = take 8 (show (abs (hash payload)))
+      let checksum = hash payload
       parse b >>- \_ ->
         parse checksum >>- \_ ->
           parse c >>- \_ ->
             pure (a ++ payload ++ b ++ checksum ++ c)
   where
-    hash = foldl' (\h c -> 33 * h `xor` fromEnum c) 5381
+    hash p = take 8 (show (abs (foldl' (\h c -> 33 * h `xor` fromEnum c) 5381 p)))
     parse s = lmap (take (length s)) (exact s)

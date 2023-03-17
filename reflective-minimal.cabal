@@ -35,8 +35,10 @@ library
       Hypothesis
       JSONExample
       ListExample
+      Nats
       PackageJSONExample
       ParserExample
+      PolymorphicInterp
       STLCExample
       SystemF
       SystemFExample
@@ -73,6 +75,7 @@ executable json-exe
     , data-default
     , directory
     , free
+    , generic-arbitrary
     , leancheck
     , lens
     , logict
@@ -95,6 +98,7 @@ executable package-json-exe
     , data-default
     , directory
     , free
+    , generic-arbitrary
     , leancheck
     , lens
     , logict
@@ -117,6 +121,7 @@ executable reflective-minimal-exe
     , data-default
     , directory
     , free
+    , generic-arbitrary
     , leancheck
     , lens
     , logict
@@ -140,6 +145,7 @@ test-suite reflective-minimal-test
     , data-default
     , directory
     , free
+    , generic-arbitrary
     , hspec
     , leancheck
     , lens
