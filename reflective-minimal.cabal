@@ -25,23 +25,24 @@ source-repository head
 
 library
   exposed-modules:
-      Bound5Example
-      BSTEnumExample
-      CalcExample
       Choices
-      Freer
-      FreerChurch
-      HeapExample
-      Hypothesis
-      JSONExample
-      ListExample
+      FanOut
+      Interps
       Nats
-      PackageJSONExample
-      ParserExample
       PolymorphicInterp
-      STLCExample
-      SystemF
-      SystemFExample
+      Reflectives
+      Examples.Hypothesis
+      Examples.Hypothesis.Bound5
+      Examples.Hypothesis.Calc
+      Examples.Hypothesis.Heap
+      Examples.Hypothesis.List
+      Examples.Hypothesis.Parser
+      Examples.BSTEnum
+      Examples.JSON
+      Examples.PackageJSON
+      Examples.STLC
+      Examples.SystemF
+      Examples.SystemFImplementation
   other-modules:
       Paths_reflective_minimal
   hs-source-dirs:

@@ -9,7 +9,7 @@
 {-# HLINT ignore "Use infix" #-}
 {-# HLINT ignore "Use intercalate" #-}
 
-module ParserExample where
+module Examples.Hypothesis.Parser where
 
 import Control.Lens (makePrisms, _1, _2, _3)
 import Control.Monad.State
@@ -19,8 +19,9 @@ import Control.Monad.State
     modify,
   )
 import Data.List (intersperse, isPrefixOf, stripPrefix)
-import Freer (Reflective)
-import qualified Freer as Reflective
+import Reflectives (Reflective)
+import qualified Reflectives as Reflective
+import qualified Interps as Interp
 import GHC.Generics (Generic)
 import Test.QuickCheck
   ( Arbitrary (..),
@@ -416,5 +417,5 @@ reflGL :: Reflective GenLang GenLang
 reflGL = GL <$> Reflective.focus _GL reflLang
 
 instance Arbitrary GenLang where
-  arbitrary = Reflective.generate reflGL -- Modified
+  arbitrary = Interp.generate reflGL -- Modified
   shrink = genericShrink

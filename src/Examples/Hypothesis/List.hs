@@ -3,9 +3,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module ListExample where
+module Examples.Hypothesis.List where
 
-import Freer (Reflective, generate, integer, listOf, lmap)
+import Reflectives (Reflective, integer, listOf, lmap)
+import Interps (generate)
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)
 

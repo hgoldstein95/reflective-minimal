@@ -4,13 +4,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Bound5Example where
+module Examples.Hypothesis.Bound5 where
 
 import Control.Lens (makePrisms, _1, _2, _3, _4, _5)
 import Data.Bits (shiftL)
 import Data.Int (Int16)
-import Freer (Reflective, lmap)
-import qualified Freer as Reflective
+import Reflectives (Reflective, lmap)
+import qualified Reflectives as Reflective
+import qualified Interps as Interp
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)
 
@@ -39,7 +40,7 @@ size :: T -> Int
 size = length . concat . toList
 
 instance Arbitrary T where
-  arbitrary = Reflective.generate reflT -- Modified
+  arbitrary = Interp.generate reflT -- Modified
   shrink = genericShrink
 
 int16 :: Reflective Int16 Int16 -- Borrowed from QuickCheck

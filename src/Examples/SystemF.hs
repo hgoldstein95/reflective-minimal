@@ -1,3 +1,9 @@
+{-
+
+Contains reflective generator SystemF example
+
+-}
+
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LambdaCase #-}
@@ -7,14 +13,14 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wall #-}
 
-module SystemFExample where
+module Examples.SystemF where
 
 import Control.Lens (preview, _1, _2)
 import Control.Monad ((<=<))
 import Data.List (nub)
 import Data.Maybe (catMaybes)
-import Freer
-import SystemF
+import Reflectives
+import Examples.SystemFImplementation
 
 type VarIdx = Int
 

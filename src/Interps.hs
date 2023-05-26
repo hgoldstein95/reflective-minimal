@@ -1,3 +1,8 @@
+{-
+
+Contains then numerous interpretations of Reflective Generators.
+
+-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE EmptyCase #-}
@@ -16,14 +21,13 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns  #-}
 
-module Freer where
+module Interps where
 
 import Choices
   ( BitNode (..),
     BitTree,
     Bits (..),
     bit,
-    bitsToInt,
     bitsToInteger,
     draw,
     flatten,
@@ -38,166 +42,18 @@ import Choices
 import qualified Choices
 import Control.Applicative (empty)
 import Control.Exception (SomeException)
-import Control.Lens (Getting, makePrisms, over, preview, view, _1, _2, _3, _head, _tail)
-import Control.Monad (ap, guard, (>=>))
+import Control.Lens (view, _3)
+import Control.Monad (guard)
 import Control.Monad.Logic (Logic, MonadLogic (interleave, (>>-)), observeAll)
 import Data.Bifunctor (Bifunctor (..))
-import Data.Char (chr, ord)
-import Data.List (group, minimumBy, maximumBy, sort, transpose)
+import Data.List (group, minimumBy, sort)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
-import Data.Monoid (First)
 import Data.Ord (comparing)
-import Data.Void (Void)
 import GHC.IO (catch, evaluate)
-import GHC.Generics (Generic)
 import qualified Test.LeanCheck as LC
-import Test.QuickCheck ( Args (maxSize, maxSuccess), Gen, forAll, quickCheckWith, stdArgs
-                       , Arbitrary, genericShrink)
-import Test.QuickCheck.Arbitrary.Generic (genericArbitrary)
+import Test.QuickCheck ( Args (maxSize, maxSuccess), Gen, forAll, quickCheckWith, stdArgs)
 import qualified Test.QuickCheck as QC
-
--- Core Definitions
-
-data Freer f a where
-  Return :: a -> Freer f a
-  Bind :: f a -> (a -> Freer f c) -> Freer f c
-
-type Choice = Maybe String
-
-type Weight = Int
-
-data R b a where
-  Pick :: [(Weight, Choice, Reflective b a)] -> R b a
-  Lmap :: (c -> d) -> R d a -> R c a
-  Prune :: R b a -> R (Maybe b) a
-  ChooseInteger :: (Integer, Integer) -> R Integer Integer
-  GetSize :: R b Int
-  Resize :: Int -> R b a -> R b a
-
-type Reflective b = Freer (R b)
-
--- Typeclass Instances Combinators
-
-instance Functor (Reflective b) where
-  fmap f (Return x) = Return (f x)
-  fmap f (Bind u g) = Bind u (fmap f . g)
-
-instance Applicative (Reflective b) where
-  pure = return
-  (<*>) = ap
-
-instance Monad (Reflective b) where
-  return = Return
-  Return x >>= f = f x
-  Bind u g >>= f = Bind u (g >=> f)
-
-dimap :: (c -> d) -> (a -> b) -> Reflective d a -> Reflective c b
-dimap _ g (Return a) = Return (g a)
-dimap f g (Bind x h) = Bind (Lmap f x) (dimap f g . h)
-
-lmap :: (c -> d) -> Reflective d a -> Reflective c a
-lmap f = dimap f id
-
-prune :: Reflective b a -> Reflective (Maybe b) a
-prune (Return a) = Return a
-prune (Bind x f) = Bind (Prune x) (prune . f)
-
-comap :: (a -> Maybe b) -> Reflective b v -> Reflective a v
-comap f = lmap f . prune
-
-getbits :: Int -> Reflective b Int
-getbits w =
-  Bind
-    ( Pick
-        [(1, Just (show (bitsToInt i)), pure (bitsToInt i)) | i <- listBits w]
-    )
-    Return
-
-pick :: [(Int, String, Reflective b a)] -> Reflective b a
-pick xs = Bind (Pick (map (over _2 Just) xs)) Return
-
-frequency :: [(Int, Reflective b a)] -> Reflective b a
-frequency xs = Bind (Pick (map (\(w, g) -> (w, Nothing, g)) xs)) Return
-
-labelled :: [(String, Reflective b a)] -> Reflective b a
-labelled xs = Bind (Pick (map (\(s, g) -> (1, Just s, g)) xs)) Return
-
-oneof :: [Reflective b a] -> Reflective b a
-oneof xs = Bind (Pick (map (1,Nothing,) xs)) Return
-
-exact :: Eq v => v -> Reflective v v
-exact x = comap (\y -> if y == x then Just y else Nothing) $ oneof [pure x]
-
-choose :: (Int, Int) -> Reflective Int Int
-choose (lo, hi) = labelled [(show i, exact i) | i <- [lo .. hi]]
-
-chooseInteger :: (Integer, Integer) -> Reflective Integer Integer
-chooseInteger p = Bind (ChooseInteger p) Return
-
-integer :: Reflective Int Int
-integer = sized $ \n -> labelled [(show i, exact i) | i <- concat (transpose [[0 .. n], reverse [-n .. -1]])]
-
-char :: Reflective Char Char
-char = sized $ \n -> labelled [(show i, exact (chr i)) | i <- [ord 'a' .. ord 'a' + n]]
-
-alphaNum :: Reflective Char Char
-alphaNum = labelled [(show c, exact c) | c <- ['a', 'b', 'c', '1', '2', '3']]
-
-bool :: Reflective Bool Bool
-bool = oneof [exact True, exact False]
-
-vectorOf :: Eq a => Int -> Reflective a a -> Reflective [a] [a]
-vectorOf 0 _ = exact []
-vectorOf n g = do
-  x <- focus _head g
-  xs <- focus _tail (vectorOf (n - 1) g)
-  exact (x : xs)
-
-listOf :: Eq a => Reflective a a -> Reflective [a] [a]
-listOf g = sized aux
-  where
-    aux 0 = exact []
-    aux n =
-      frequency
-        [ (1, exact []),
-          ( n,
-            do
-              x <- focus _head g
-              xs <- focus _tail (aux (n - 1))
-              exact (x : xs)
-          )
-        ]
-
-nonEmptyListOf :: Eq a => Reflective a a -> Reflective [a] [a]
-nonEmptyListOf g = do
-  x <- focus _head g
-  xs <- focus _tail (sized aux)
-  exact (x : xs)
-  where
-    aux 0 = exact []
-    aux n =
-      frequency
-        [ (1, exact []),
-          ( n,
-            do
-              x <- focus _head g
-              xs <- focus _tail (aux (n - 1))
-              exact (x : xs)
-          )
-        ]
-
-fwd :: Reflective c a -> Reflective Void a
-fwd = lmap (\case {})
-
-focus :: Getting (First u') s u' -> Reflective u' v -> Reflective s v
-focus = comap . preview
-
-resize :: Int -> Reflective b a -> Reflective b a
-resize _ (Return x) = Return x
-resize w (Bind x f) = Bind (Resize w x) (resize w . f)
-
-sized :: (Int -> Reflective b a) -> Reflective b a
-sized = Bind GetSize
+import Reflectives
 
 -- Interpretations
 
@@ -523,184 +379,3 @@ validateParse g =
   quickCheckWith
     (stdArgs {maxSuccess = 10000})
     (forAll (generate g) $ \x -> all ((== x) . fst . head . filter (null . snd) . parse g) (unparse g x))
-
--- Examples
-
-data Tree = Leaf | Node Tree Int Tree
-  deriving (Show, Eq, Ord, Generic)
-
-instance Arbitrary Tree where
-  arbitrary = genericArbitrary
-  shrink = genericShrink
-
-makePrisms ''Tree
-
-nodeValue :: Tree -> Maybe Int
-nodeValue (Node _ x _) = Just x
-nodeValue _ = Nothing
-
-nodeLeft :: Tree -> Maybe Tree
-nodeLeft (Node l _ _) = Just l
-nodeLeft _ = Nothing
-
-nodeRight :: Tree -> Maybe Tree
-nodeRight (Node _ _ r) = Just r
-nodeRight _ = Nothing
-
-bstFwd :: (Int, Int) -> Reflective Void Tree
-bstFwd (lo, hi) | lo > hi = return Leaf
-bstFwd (lo, hi) =
-  frequency
-    [ ( 1, return Leaf),
-      ( 5, do
-        x <- fwdOnly (choose (lo, hi))
-        l <- fwdOnly (bstFwd (lo, x - 1))
-        r <- fwdOnly (bstFwd (x + 1, hi))
-        return (Node l x r) ) ]
-  where
-    fwdOnly = lmap (\ x -> case x of)
-
-bst :: Reflective Tree Tree
-bst = aux (1, 10)
-  where
-    aux (lo, hi)
-      | lo > hi = exact Leaf
-      | otherwise = do
-          labelled
-            [ ( "leaf",
-                exact Leaf
-              ),
-              ( "node",
-                do
-                  x <- focus (_Node . _2) (choose (lo, hi))
-                  l <- focus (_Node . _1) (aux (lo, x - 1))
-                  r <- focus (_Node . _3) (aux (x + 1, hi))
-                  exact (Node l x r)
-              )
-            ]
-
-hypoTree :: Reflective Tree Tree
-hypoTree =
-  oneof
-    [ exact Leaf,
-      do
-        l <- comap nodeLeft hypoTree
-        r <- comap nodeRight hypoTree
-        exact (Node l 0 r)
-    ]
-
--- fan out:
-
--- Reflective generator that deliberately has a fan out of one
-fanOut1 :: Reflective Int Int
-fanOut1 = exact 1 -- It just generates one, one way
-
--- Reflective generator that deliberately has a fan out of two
-fanOut2 :: Reflective Int Int
-fanOut2 = oneof [exact 1, exact 1] -- It just generates one, two ways
-
--- Reflective generator that deliberately has a max fan out of one
-fanOut1' :: Reflective Int Int
-fanOut1' = oneof [exact 1, exact 2] -- It just generates one, one way, and two one way
-
--- Reflective generator that deliberately has a max fan out of two
-fanOut2' :: Reflective Int Int
-fanOut2' = oneof [exact 1, exact 1, exact 2] -- It just generates one, two ways, and two one way
-
--- Find the max fan out of a reflective
--- becomes slow for bst (1,7), taking about three second, says fan out of 1
-findMaxFO :: (Ord b) => Reflective a b -> Int
-findMaxFO = maximum . fmap length . group . sort . enum
-
--- Find the max fan out of a reflective and which value has that
-findMaxFO' :: (Ord b) => Reflective a b -> (Int, b)
-findMaxFO' = maximumBy (\(x,_) (y,_) -> compare x y) . fmap (\xs -> (length xs, head xs))
-           . group . sort . enum
-
--- the above are obviously too slow to be tractable on any read reflectives, but
--- the purpose of this property is to clearly explain what fanout is, not implement
--- it efficiently
-
-infFanOut :: Reflective [Int] [Int]
-infFanOut =
-  oneof
-    [ infFanOut,
-      exact [],
-      do
-        x <- focus _head (choose (0, 10))
-        xs <- focus _tail infFanOut
-        exact (x : xs)
-    ]
-
-data UnLabTree = UnLabLeaf | UnLabBranch UnLabTree UnLabTree deriving (Eq, Show, Generic)
-
-instance Arbitrary UnLabTree where
-  arbitrary = genericArbitrary
-  shrink = genericShrink
-
-makePrisms ''UnLabTree
-
-unlabelled :: Reflective UnLabTree UnLabTree
-unlabelled =
-  oneof
-    [ exact UnLabLeaf,
-      UnLabBranch
-        <$> focus (_UnLabBranch . _1) unlabelled
-        <*> focus (_UnLabBranch . _2) unlabelled
-    ]
-
--- main :: IO ()
--- main = do
---   print =<< QC.generate (generate weirdTree)
---   print =<< QC.generate (generate bstFwd)
---   let ss = fromJust $ unparse bst (Node Leaf 1 (Node Leaf 2 Leaf))
---   print ss
---   print (parse bst ss)
---   let n l = Node l 0
---   print $ (map flatten . choices hypoTree) (n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
---   print $ (map flatten . choices hypoTree) (n Leaf (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf))
---   print $ choices hypoTree (n Leaf (n (n Leaf Leaf) Leaf))
---   print $ (map flatten . choices hypoTree) (n Leaf (n Leaf (n Leaf Leaf)))
---   print $ choices hypoTree (n Leaf (n Leaf (n Leaf Leaf)))
---   print $ choices bst (Node (Node Leaf 1 Leaf) 3 (Node Leaf 5 Leaf))
---   print $ map fst $ filter (null . snd) $ parse expression (words "( 1 + 2 ) * ( 3 + 3 * 4 )")
---   let _hole_ = undefined
---   print =<< complete bst (Node _hole_ 5 _hole_)
---   print =<< complete bst (Node (Node _hole_ 2 Leaf) 5 (Node _hole_ 7 _hole_))
---   print =<< QC.generate (byExample expression [Mul (Num 1) (Num 2), Mul (Num 3) (Num 4)])
-
---   let t = n (n Leaf (n (n Leaf (n (n Leaf Leaf) Leaf)) Leaf)) (n (n Leaf (n (n Leaf (n Leaf Leaf)) (n Leaf Leaf))) Leaf)
---   print (choices hypoTree t)
---   print $ shrink unbalanced hypoTree t
-
--- examples people at Chalmers had questions about
-
--- --------
-
--- 2d10s
--- sampling two random numbers then adding them together
--- Q = what is the correct annotation?
--- A = no annotation type checks, but not sound or complete, no bwd info
---     we can add the correct annotation to the second comap, but that still leaves
---     us in the lurch going bwd as they dont both have annotations
-d10s :: Reflective Int Int
-d10s = do
-  d1 <- comap undefined (choose (1,10))
-  d2 <- comap (\total -> Just $ total - d1) (choose (1,10))
-  return (d1+d2)
-
--- gen list then sort
--- Same Q = what is the correct annotation?
--- A = in this case, no annotation or id as the annotation (if the list is already
---     sorted sort == id), is sound, but not complete
--- sound = only wants that there is atleast one sequence of choices that could have
---         led to the value, so the id suffices as it covers the case where the
---         list is already sorted
--- pure proj = this property is failing vacuously cos the chance that the list is
---             already sorted is so small
--- Q what makes this different from the prev example
--- A = no info is missing -- the reordering of the list still preserves all the elms
-genThenSort :: Reflective [Int] [Int]
-genThenSort = do
-  unsorted <- listOf integer
-  return (sort unsorted)

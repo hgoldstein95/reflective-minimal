@@ -4,12 +4,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module HeapExample where
+module Examples.Hypothesis.Heap where
 
 import Control.Lens (makePrisms, _2, _3, _Just)
 import Data.List (sort)
-import Freer (Reflective, lmap)
-import qualified Freer as Reflective
+import Reflectives (Reflective, lmap)
+import qualified Reflectives as Reflective
+import qualified Interps as Interp
 import GHC.Generics (Generic)
 import Test.QuickCheck (Arbitrary (..), genericShrink)
 
@@ -90,7 +91,7 @@ prop_ToSortedList (h :: Heap Int) =
     xs = toSortedList h
 
 instance Arbitrary (Heap Int) where
-  arbitrary = Reflective.generate reflHeap -- Modified
+  arbitrary = Interp.generate reflHeap -- Modified
   shrink = genericShrink
 
 -- Reflective Generator

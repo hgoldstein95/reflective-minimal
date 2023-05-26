@@ -7,12 +7,13 @@
 
 {-# HLINT ignore "Use isNothing" #-}
 
-module CalcExample where
+module Examples.Hypothesis.Calc where
 
 import Control.Lens (makePrisms, _1, _2)
 import Data.Maybe (isJust)
-import Freer (Reflective)
-import qualified Freer as Reflective
+import Reflectives (Reflective)
+import qualified Reflectives as Reflective
+import qualified Interps as Interp
 import GHC.Generics (Generic)
 import Test.QuickCheck
   ( Arbitrary (..),
@@ -40,7 +41,7 @@ eval (Div e0 e1) =
         else div <$> eval e0 <*> e
 
 instance Arbitrary Exp where
-  arbitrary = Reflective.generate reflCalc -- Modified
+  arbitrary = Interp.generate reflCalc -- Modified
   shrink = genericShrink
 
 prop_div :: Exp -> Bool

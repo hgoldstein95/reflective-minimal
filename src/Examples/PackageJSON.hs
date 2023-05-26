@@ -1,7 +1,14 @@
-module PackageJSONExample where
+{-
+
+Code defining a Reflective Generator 'package' for package.json files.
+This is used in our realistic shrinking example (Section 6.2).
+
+-}
+
+module Examples.PackageJSON where
 
 import Control.Lens (_head, _tail)
-import Freer
+import Reflectives
 
 token :: Char -> Reflective b ()
 token s = labelled [(['\'', s, '\''], pure ())]
@@ -263,6 +270,7 @@ e =
       ("'E+'", lmap (take 2) (exact "E+"))
     ]
 
+-- Final Reflective Generator for package.json files
 package :: Reflective String String
 package =
   object'

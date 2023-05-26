@@ -1,3 +1,8 @@
+{-
+
+Supporting code for the choices and shrink interps.
+
+-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternSynonyms #-}

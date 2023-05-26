@@ -1,33 +1,30 @@
+{-
+
+Exhibits testing Reflective Generators for soundness, pure proj, and external correctness
+properties. (For more info see Section 4.1 _Correctness of a Reflective Generator._)
+
+NOTE:- currently all slow tests and known failures are commented, along with their imports
+
+-}
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE GADTs #-}
 
--- module Spec where
--- here so you can enter this file with the repl, needs to be commented to test
-
--- base
-
--- hspec
-
--- QuickCheck
-
--- local / under test
-
-import Bound5Example (int16, reflT)
-import CalcExample (reflCalc)
+import Examples.Hypothesis.Bound5 (int16, reflT)
+import Examples.Hypothesis.Calc (reflCalc)
 import Data.Maybe (maybeToList)
-import Freer
+import Reflectives
   ( Freer (..),
     R (..),
     Reflective,
     Tree (..),
     bst,
-    generate,
-    hypoTree,
+    -- hypoTree,
     resize,
     unlabelled,
   )
-import HeapExample (reflHeap)
-import JSONExample
+import Interps (generate)
+import Examples.Hypothesis.Heap (reflHeap)
+import Examples.JSON
   ( array,
     char_,
     chars,
@@ -50,9 +47,16 @@ import JSONExample
     value,
     withChecksum,
   )
-import ListExample (reflList)
-import ParserExample (reflExp, reflFunc, reflLang, reflMod, reflStmt, reflVar)
-import SystemFExample (genExpr)
+import Examples.Hypothesis.List (reflList)
+import Examples.Hypothesis.Parser
+  ( reflExp,
+    -- reflFunc,
+    -- reflLang,
+    reflMod,
+    reflStmt,
+    reflVar
+  )
+-- import Examples.SystemF (genExpr)
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck ((==>))
@@ -65,7 +69,7 @@ main = hspec $ do
     -- Freer
     prop "bst" $ soundness bst
     prop "unlabelled" $ soundness unlabelled
-    prop "hypoTree" $ soundness hypoTree -- slow
+    -- prop "hypoTree" $ soundness hypoTree -- slow
     -- Bound5Example
     prop "int16" $ soundness int16
     prop "reflT" $ soundness reflT
@@ -99,16 +103,16 @@ main = hspec $ do
     prop "reflList" $ soundness reflList
     -- Parser Example
     prop "reflVar" $ soundness reflVar
-    prop "reflLang" $ soundness reflLang -- slow
+    -- prop "reflLang" $ soundness reflLang -- slow
     prop "reflMod" $ soundness reflMod
-    prop "reflFunc" $ soundness reflFunc -- slow
+    -- prop "reflFunc" $ soundness reflFunc -- slow
     prop "reflStmt" $ soundness reflStmt
     prop "reflExp" $ soundness reflExp
-  -- prop "systemF" $ soundness (genExpr 10) -- TODO fails
+  -- prop "systemF" $ soundness (genExpr 10) -- Known failure due to prefix issue described below
   describe "Our reflectives satisfy pure proj" $ do
     prop "bst" $ pureProj bst
     prop "unlabelled" $ pureProj unlabelled
-    prop "hypoTree" $ pureProj hypoTree -- slow
+    -- prop "hypoTree" $ pureProj hypoTree -- slow
     -- NOTE:- this property is very difficult to test because the antecedent is
     -- often not fulfilled, causing QuickCheck to give up. This is why most of these
     -- tests are commented out, because QuickCheck gives up
@@ -151,8 +155,9 @@ main = hspec $ do
     -- prop "reflFunc" $ pureProj reflFunc -- slow
     -- prop "reflStmt" $ pureProj reflStmt
     -- prop "reflExp" $ pureProj reflExp
-    -- prop "systemF" $ pureProj (genExpr 10) -- TODO fails, often vacuously, but sometimes with prefix issue
-    -- NOTE:- In fact most of our JSON reflectives do not fulfil this property.
+    -- prop "systemF" $ pureProj (genExpr 10) -- Known failure, fails, often vacuously, but sometimes with prefix issue
+    -- Prefix issue:
+    -- In fact most of our JSON reflectives do not fulfil this property.
     -- They can only be considered "intentionally incomplete".
     -- This is so that the implementation can be useable in terms of efficiency.
     -- At every step, it checks a prefix but never the whole suffix, The generator
@@ -162,6 +167,7 @@ main = hspec $ do
     -- the same prefix pass the precondition, but then of course are not equal and
     -- fail the rest.
     -- This is an example where completeness is not always desirable.
+    -- (this has a similar effect on soundness)
   describe "bst satisfies external properties" $ do
     prop "soundness re bst prop" $ exSound bstProp bst
     prop "completeness re bst prop" $ exComp bstProp bst

@@ -1,9 +1,14 @@
+{-
+
+Exhibits the overlap property of Reflective Generators.
+
+-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Nats where
 
 import Control.Lens (makePrisms)
-import Freer
+import Reflectives
 
 data Nat = Z | S Nat
   deriving (Eq, Ord, Show)

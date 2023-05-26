@@ -1,10 +1,10 @@
-module JSONExample where
+module Examples.JSON where
 
 import Control.Lens (_head, _tail)
 import Data.Bits (xor)
 import Data.Char (isAlpha, isNumber)
 import Data.Foldable (Foldable (foldl'))
-import Freer hiding (parse)
+import Reflectives
 
 token :: Char -> Reflective b ()
 token s = labelled [(['\'', s, '\''], pure ())]
@@ -236,7 +236,7 @@ e =
       ("'E+'", lmap (take 2) (exact "E+"))
     ]
 
--- DIFFERENCE we call this a hash in the paper
+-- we call this a hash in the paper
 withChecksum :: Reflective String String
 withChecksum = do
   let a = "{\"payload\":"

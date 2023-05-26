@@ -1,3 +1,9 @@
+{-
+
+Contains an implementation of SystemF to be used by SystemFExample.hs
+
+-}
+
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -10,7 +16,7 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wall #-}
 
-module SystemF where
+module Examples.SystemFImplementation where
 
 import Control.Lens (makePrisms)
 import Control.Monad (guard)
@@ -31,16 +37,13 @@ import Test.QuickCheck.Arbitrary.Generic (genericArbitrary)
 -- DEFINITIONS
 ------------------------------------------
 
-{- begin type -}
 data Type = Base | TBool | Fun Type Type | TVar Int | ForAll Type
-  {- end type -}
   deriving (Eq, Ord, Generic)
 
 instance Arbitrary Type where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-{- begin expr -}
 data Expr
   = Con
   | Var Int
@@ -51,7 +54,6 @@ data Expr
   | BFalse
   | TLam Expr
   | TApp Expr Type
-  {- end expr -}
   deriving (Eq, Ord, Generic)
 
 instance Arbitrary Expr where
@@ -60,10 +62,6 @@ instance Arbitrary Expr where
 
 makePrisms ''Type
 makePrisms ''Expr
-
--- instance NFData Type
-
--- instance NFData Expr
 
 ------------------------------------------
 -- PRINTING
@@ -159,11 +157,9 @@ wellFormedType :: Int -> Type -> Bool
 wellFormedType _ Base = True
 wellFormedType _ TBool = True
 wellFormedType ftv (TVar n) = n < ftv && n >= 0
--- J: added latter condition to avoid counterexamples with free type variables
 wellFormedType ftv (Fun t1 t2) = wellFormedType ftv t1 && wellFormedType ftv t2
 wellFormedType ftv (ForAll t) = wellFormedType (ftv + 1) t
 
--- TODO: Pass a Config (maybe not needed??)
 typeOf' :: (?mutant :: Mutant) => Int -> [Type] -> Expr -> Maybe Type
 typeOf' _ _ Con = Just Base
 typeOf' _ _ BTrue = Just TBool
@@ -249,7 +245,6 @@ substInType n s (TVar x)
   | mut SubstInTypeLT (x > n) (x < n) = TVar $ mut SubstInTypeNoDecr (x - 1) x
   | otherwise = TVar x
 substInType n s (ForAll e) = ForAll $ substInType (mut SubstInTypeNoIncr (n + 1) n) (mut SubstInTypeNoLift (liftType 0 s) s) e
--- substInType n s (ForAll e)  = ForAll $ substInType (n+1) (mut SubstInTypeNoLift (liftType 0 s) s) e
 substInType n s (Fun t1 t2) = Fun (substInType n s t1) (substInType n s t2)
 substInType _ _ x = x
 
