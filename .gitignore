@@ -4,3 +4,6 @@ dist-*
 
 *.pdf
 *.csv
+supplemental/
+supplemental.zip
+

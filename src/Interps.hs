@@ -4,22 +4,17 @@ Contains then numerous interpretations of Reflective Generators.
 
 -}
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# OPTIONS_GHC -Wno-incomplete-patterns  #-}
 
 module Interps where
 
@@ -50,10 +45,10 @@ import Data.List (group, minimumBy, sort)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import GHC.IO (catch, evaluate)
-import qualified Test.LeanCheck as LC
-import Test.QuickCheck ( Args (maxSize, maxSuccess), Gen, forAll, quickCheckWith, stdArgs)
-import qualified Test.QuickCheck as QC
 import Reflectives
+import qualified Test.LeanCheck as LC
+import Test.QuickCheck (Args (maxSize, maxSuccess), Gen, forAll, quickCheckWith, stdArgs)
+import qualified Test.QuickCheck as QC
 
 -- Interpretations
 
@@ -260,6 +255,26 @@ choices rg v = snd <$> aux rg v Nothing
       (x, cs) <- interpR mx b s
       (y, cs') <- aux (f x) b s
       pure (y, draw cs +++ cs')
+
+probabilityOf :: Reflective a a -> a -> Rational
+probabilityOf g v = (sum . map snd) (interp g v Nothing)
+  where
+    interp :: Reflective b a -> b -> Maybe Int -> [(a, Rational)]
+    interp (Return x) _ _ = return (x, 1)
+    interp (Bind x f) b s = interpR x b s >>= \(y, r1) -> interp (f y) b s >>= \(z, r2) -> return (z, r1 * r2)
+
+    interpR :: R b a -> b -> Maybe Int -> [(a, Rational)]
+    interpR (Pick xs) b s =
+      let total = fromIntegral (sum [w | (w, _, _) <- xs])
+       in concat [interp x b s >>= \(z, r) -> pure (z, r * fromIntegral w / total) | (w, _, x) <- xs]
+    interpR (Lmap f x) b s = interpR x (f b) s
+    interpR (Prune x) b s = maybeToList b >>= \b' -> interpR x b' s
+    interpR (ChooseInteger (lo, hi)) b _
+      | lo <= b && b <= hi = pure (b, 1)
+      | otherwise = empty
+    interpR GetSize _ (Just s) = return (s, 1)
+    interpR GetSize _ Nothing = pure (30, 1)
+    interpR (Resize s x) b _ = interpR x b (Just s)
 
 unparse :: Reflective a a -> a -> Maybe [String]
 unparse rg v = snd <$> listToMaybe (aux rg v)

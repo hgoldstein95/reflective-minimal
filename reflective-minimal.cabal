@@ -17,7 +17,6 @@ license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     README.md
-    CHANGELOG.md
 
 source-repository head
   type: git
@@ -26,23 +25,22 @@ source-repository head
 library
   exposed-modules:
       Choices
-      FanOut
-      Interps
-      Nats
-      PolymorphicInterp
-      Reflectives
       Examples.Hypothesis
       Examples.Hypothesis.Bound5
       Examples.Hypothesis.Calc
       Examples.Hypothesis.Heap
       Examples.Hypothesis.List
       Examples.Hypothesis.Parser
-      Examples.BSTEnum
       Examples.JSON
       Examples.PackageJSON
       Examples.STLC
       Examples.SystemF
       Examples.SystemFImplementation
+      FanOut
+      Interps
+      Nats
+      PolymorphicInterp
+      Reflectives
   other-modules:
       Paths_reflective_minimal
   hs-source-dirs:
