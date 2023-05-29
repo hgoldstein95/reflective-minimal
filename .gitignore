@@ -7,3 +7,5 @@ dist-*
 supplemental/
 supplemental.zip
 
+analysis/weighted.json
+analysis/unweighted.json
