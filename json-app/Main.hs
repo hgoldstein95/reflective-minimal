@@ -3,6 +3,8 @@
 Main file for application that recreates the IFH experiment. (Section 5.2)
 
 -}
+{-# LANGUAGE BangPatterns #-}
+
 module Main (main) where
 
 import Control.Monad (replicateM)
@@ -11,8 +13,8 @@ import Data.Foldable (Foldable (foldl'))
 import Data.List (intercalate)
 import Data.Maybe (fromMaybe)
 import Data.String (fromString)
-import Interps (generate, weightsFor, weighted)
 import Examples.JSON (withChecksum)
+import Interps (generate, weighted, weightsFor)
 import System.Directory (getDirectoryContents)
 import qualified Test.QuickCheck as QC
 
@@ -25,9 +27,10 @@ fixup s = "{\"payload\":" ++ s ++ ",\"checksum\":" ++ hash s ++ "}"
 main :: IO ()
 main = do
   files <- drop 2 <$> getDirectoryContents "analysis/json"
-  let files' = filter (/= (fromString ".." ::FilePath)) files
+  let files' = filter (/= (fromString ".." :: FilePath)) files
   jsons <- mapM (readFile . ("analysis/json/" ++)) files'
-  let w = weightsFor withChecksum (map fixup jsons)
-  print w
+  putStrLn "Reading examples from analysis/json and building weights"
+  let !w = weightsFor withChecksum (map fixup jsons)
+  putStrLn "Wrighting samples to analysis/weighted.json and analysis/unweighted.json"
   writeFile "analysis/weighted.json" . intercalate "\n" =<< replicateM 1000 (QC.generate (weighted withChecksum False (fromMaybe 0 . (`lookup` w))))
   writeFile "analysis/unweighted.json" . intercalate "\n" =<< replicateM 1000 (QC.generate (generate withChecksum))
