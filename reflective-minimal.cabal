@@ -31,6 +31,7 @@ library
       Examples.Hypothesis.Heap
       Examples.Hypothesis.List
       Examples.Hypothesis.Parser
+      Examples.DivZero
       Examples.JSON
       Examples.PackageJSON
       Examples.STLC

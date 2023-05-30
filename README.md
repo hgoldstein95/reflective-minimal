@@ -44,6 +44,7 @@ This will take you through what code we have, in reference to what appears in th
 >   * `Examples/`
 >     - `Hypothesis/` _contains the Reflective Generators for the Hypothesis experiment (Table 1)_
 >     - `Hypothesis.hs` - Hypothesis experiment code
+>     - `DivZero.hs` - Example Reflective Generator for terms where division by zero is avoided (Section 4.3).
 >     - `JSON.hs` - defines a Reflective Generator for JSOn files inc `withHashCode`, renamed to `withChecksum`
 >     - `PackageJSON.hs` - defines a Reflective Generator 'package' for package.json files
 >     - `STLC.hs` - defines a Reflective Generator for the STLC
@@ -67,7 +68,6 @@ This will take you through what code we have, in reference to what appears in th
 
 TODOs
   - add missing things (look at old repo, they are probs there)
-    * gen that excludes the parse trees with a divide-by-zero error:
     * STLC reflective where annnotation is typeOf
     * noAnn
 
