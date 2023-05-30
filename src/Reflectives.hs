@@ -179,6 +179,9 @@ resize w (Bind x f) = Bind (Resize w x) (resize w . f)
 sized :: (Int -> Reflective b a) -> Reflective b a
 sized = Bind GetSize
 
+noAnn :: Reflective b a -> Reflective Void a
+noAnn = lmap (\ x -> case x of)
+
 -- Examples
 
 data Tree = Leaf | Node Tree Int Tree
@@ -260,3 +263,14 @@ unlabelled =
         <$> focus (_UnLabBranch . _1) unlabelled
         <*> focus (_UnLabBranch . _2) unlabelled
     ]
+
+bstNoAnn :: (Int, Int) -> Reflective Void Tree
+bstNoAnn (lo, hi) | lo > hi = return Leaf
+bstNoAnn (lo, hi) =
+  frequency
+    [ ( 1, return Leaf),
+    ( 5, do
+    x <- noAnn (choose (lo, hi))
+    l <- noAnn (bstNoAnn (lo, x - 1))
+    r <- noAnn (bstNoAnn (x + 1, hi))
+    return (Node l x r) ) ]
