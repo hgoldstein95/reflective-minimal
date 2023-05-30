@@ -2,14 +2,36 @@
 
 Code Artifact for "Reflecting on Random Generation" ICFP23 paper.
 
-## Requirements
+## Reuse
 
-Most of the build dependencies are managed by `stack`. If you are running locally, please install a
-recent version and then continue with the instructions below. Our Python analysis requires the
-`seaborn` library, which transitively depends on common data analysis libraries like `pandas` and
-`numpy`; these are installed automatically when you install `seaborn` via `pip`.
+This repository will need to be reorganized slightly before submission to Hackage, but the core
+reusable components are easy to get started with. Simply importing `Reflectives` along with
+`Interps` (for the appropriate interpretation) gives you all the tools you need to write and use
+your own reflective generators.
 
-## Code Tour
+## Replication
+
+This section describes how to replicate the results in the paper.
+
+### Requirements
+
+Library dependencies are managed by `stack`, which you can install via
+[ghcup](https://www.haskell.org/ghcup/) (recommended) or from
+[the stack website](https://docs.haskellstack.org/en/stable/) (simpler).
+
+To run the python analysis code, ensure you have a version of Python 3 on your system (modern
+versions of Linux ship with `python3` by default). Then install `pip`; on Ubuntu:
+```
+sudo apt install python3-pip
+```
+Finally, install a few packages:
+```
+python3 -m pip install numpy seaborn
+```
+
+These dependencies are already installed in the replication VM.
+
+### Code Tour
 
 This will take you through what code we have, in reference to what appears in the paper.
 
@@ -66,34 +88,26 @@ This will take you through what code we have, in reference to what appears in th
 >   * `LICENSE`
 >   * `.gitignore`
 
-TODOs
-  - add missing things (look at old repo, they are probs there)
-    * STLC reflective where annnotation is typeOf
-    * noAnn
-
-## Recreating Results
+### Recreating Results
 
 This will provide a step-by-step as to how to recreate the following results from our paper:
   1. Testing the correctness of Reflective Generators (Section 4.1 _Correctness of a Reflective Generator._)
   2. Analysis of IFH-style generator (Figure 7)
-  3. Replicating the Hypothesis Experiment to analyse the Shrinking of Reflective Generators (Table 1)
+  3. Replicating the Hypothesis Experiment to analyze the Shrinking of Reflective Generators (Table 1)
   4. Using our of shrinking JSON files (Section 6.2 _A Realistic Example_)
 
-For all of these steps, you'll either need to be running in the VM, or you'll need a recent version
-of [stack](https://docs.haskellstack.org/en/stable/).
-
-### 1. Testing the correctness of Reflective Generators
+#### 1. Testing the correctness of Reflective Generators
 
 Run the following command from the root directory of this project:
 ```bash
 stack test
 ```
 
-### 2. Analysis of IFH-style generator
+#### 2. Analysis of IFH-style generator
 
 To generate the data from our Inputs From Hell evaluation, first generate the data by running:
 ```
-stack build --ghc-options -O2; stack exec json-exe
+stack run json-exe
 ```
 This reads from `analysis/json` and trains a generator to replicate the examples in that directory.
 
@@ -102,11 +116,7 @@ Then, you can either run
 cd analysis; python3 json_analysis.py
 ```
 To generate the plots as `pdf` files, or you can play around with `json_analysis.ipynb` as a
-notebook. If you are running this locally, you may need to run:
-```
-python3 -m pip install seaborn
-```
-We have installed these dependencies already in the VM.
+notebook.
 
 Note: if you are generating the PDFs in the VM, you can copy them to your computer by running the
 following command **outside the VM**:
@@ -114,7 +124,7 @@ following command **outside the VM**:
 scp -P 5555 artifact@localhost:reflective-minimal/analysis/<desired_chart>.pdf .
 ```
 
-### 3. Replicating the Hypothesis Experiment to analyse the Shrinking of Reflective Generators (Table 1)
+### 3. Replicating the Hypothesis Experiment to analyze the Shrinking of Reflective Generators (Table 1)
 
 Run the following command from the root directory of this project:
 ```bash
@@ -129,17 +139,17 @@ e.g.
 ```
 heap: 15.06 (6.74--23.38) & 9.10 (8.23--9.97) & 9.18 (7.96--10.39)
 ```
-where the first value is the unshrunk example, the second is the result of QuickCheck's generic shrink, and the last is the result of the Reflective Generator's shrink.
+where the first value is the unshrunk example, the second is the result of QuickCheck's generic
+shrink, and the last is the result of the Reflective Generator's shrink.
 
 (Note that the Hypothesis numbers in the paper are not re-run, but taken directly from their experiment.)
 
 ### 4. Replicating the package.json shrinking example.
 
-Build the project (with optimizations) and then `cat` `demo-min.json` into the `package-json-exe`
-shrinker program.
+Build the project and then `cat` `demo-min.json` into the `package-json-exe` shrinker program.
 
 ```
-stack build --ghc-options -O2; cat examples/demo-min.json | stack exec -- package-json-exe
+cat examples/demo-min.json | stack run -- package-json-exe
 ```
 
 This prints the shrunken example, as shown in the paper.
