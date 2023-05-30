@@ -16,7 +16,8 @@ This will take you through what code we have, in reference to what appears in th
 > - `analysis/`
 >   * `json/` _contains 10 JSONs for IFH experiment (Figure 7)_
 >   * `shrinks/` _used to collect Hypothesis experiment results for Table 1_
->   * `json_analysis.ipynb` _generates plots for IFH experiment_
+>   * `json_analysis.py` _generates plots for IFH experiment_
+>   * `json_analysis.ipynb` _generates plots for IFH experiment, workbook version_
 > - `app/` _contains main file for Hypothesis experiment (Table 1)_
 > - `json-app/` _contains main file for IFH experiment (Figure 7)_
 > - `package-json-app/` _contains main file for realistic shrinking example (Section 6.2)_
@@ -65,12 +66,10 @@ This will take you through what code we have, in reference to what appears in th
 >   * `.gitignore`
 
 TODOs
-  - Change String -> Choice, and Choice -> Maybe Choice (in code and paper)
   - add missing things (look at old repo, they are probs there)
     * gen that excludes the parse trees with a divide-by-zero error:
     * STLC reflective where annnotation is typeOf
     * noAnn
-
 
 ## Recreating Results
 
