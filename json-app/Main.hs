@@ -26,8 +26,8 @@ fixup s = "{\"payload\":" ++ s ++ ",\"checksum\":" ++ hash s ++ "}"
 
 main :: IO ()
 main = do
-  files <- drop 2 <$> getDirectoryContents "analysis/json"
-  let files' = filter (/= (fromString ".." :: FilePath)) files
+  files <- getDirectoryContents "analysis/json"
+  let files' = filter (/= (fromString "." :: FilePath)) . filter (/= (fromString ".." :: FilePath)) $ files
   jsons <- mapM (readFile . ("analysis/json/" ++)) files'
   putStrLn "Reading examples from analysis/json and building weights"
   let !w = weightsFor withChecksum (map fixup jsons)
