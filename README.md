@@ -66,11 +66,6 @@ This will take you through what code we have, in reference to what appears in th
 >   * `LICENSE`
 >   * `.gitignore`
 
-TODOs
-  - add missing things (look at old repo, they are probs there)
-    * STLC reflective where annnotation is typeOf
-    * noAnn
-
 ## Recreating Results
 
 This will provide a step-by-step as to how to recreate the following results from our paper:
