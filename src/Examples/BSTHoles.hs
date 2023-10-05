@@ -5,6 +5,7 @@ module Examples.BSTHoles where
 import Data.Maybe (maybeToList)
 import Interps (generate)
 import Reflectives hiding (bst)
+import Test.QuickCheck (Arbitrary, (==>))
 import qualified Test.QuickCheck as QC
 
 bst :: (Int, Int) -> Reflective Tree Tree
@@ -40,7 +41,7 @@ reflect' g v = interp g v Nothing
     interpR GetSize _ Nothing = pure 30
     interpR (Resize s x) b _ = interpR x b (Just s)
 
-soundness :: Show a => Reflective a a -> QC.NonNegative Int -> QC.Property
+soundness :: (Show a) => Reflective a a -> QC.NonNegative Int -> QC.Property
 soundness g n =
   QC.forAll
     (generate (resize (QC.getNonNegative n) g))
@@ -56,8 +57,28 @@ soundness g n =
 pureProj :: (Eq a) => Reflective a a -> a -> a -> QC.Property
 pureProj g a a' = a' `elem` reflect' g a QC.==> a == a'
 
+externalSoundness :: (Show t) => Reflective d t -> (t -> Bool) -> QC.NonNegative Int -> QC.Property
+externalSoundness g p n = QC.forAll (generate (resize (QC.getNonNegative n) g)) $ \t -> p t
+
+externalCompleteness :: (Show a, Arbitrary a) => Reflective a a -> (a -> Bool) -> QC.Property
+externalCompleteness g p = QC.forAll QC.arbitrary $ \t -> p t ==> not (null (reflect' g t))
+
 prop_sound :: QC.NonNegative Int -> QC.Property
 prop_sound = soundness (bst (-10, 10))
 
 prop_complete :: Tree -> Tree -> QC.Property
 prop_complete = pureProj (bst (-10, 10))
+
+toList :: Tree -> [Int]
+toList Leaf = []
+toList (Node l x r) = toList l ++ [x] ++ toList r
+
+isBST :: Tree -> Bool
+isBST Leaf = True
+isBST (Node l x r) = all (< x) (toList l) && all (> x) (toList r) && isBST l && isBST r
+
+prop_externalSound :: QC.NonNegative Int -> QC.Property
+prop_externalSound = externalSoundness (bst (-10, 10)) isBST
+
+prop_externalComplete :: QC.Property
+prop_externalComplete = externalCompleteness (bst (-10, 10)) isBST
